@@ -1,4 +1,61 @@
+# SwiftPM and Xcode build products
 .build/
 .swiftpm/
+DerivedData/
+build/
 dist/
+*.app/
+*.dSYM/
+*.xcarchive/
+*.xcresult/
+*.ipa
+*.dmg
+*.pkg
+
+# Per-user Xcode and editor state
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS filesystem metadata
 .DS_Store
+._*
+.Spotlight-V100/
+.Trashes/
+.fseventsd/
+
+# Local environment, credentials, and code-signing material
+.env
+.env.*
+!.env.example
+!.env.sample
+secrets/
+credentials.json
+.netrc
+*.key
+*.pem
+*.p12
+*.pfx
+*.mobileprovision
+*.provisionprofile
+
+# Local diagnostics, test coverage, and scratch files
+*.log
+*.crash
+*.ips
+*.profraw
+*.profdata
+coverage/
+tmp/
+
+# Local assistant/session state
+.codex/
+.claude/
+.agents/
+.cursor/

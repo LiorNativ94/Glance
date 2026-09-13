@@ -18,7 +18,7 @@ Open `Package.swift` in Xcode to edit the project, or run `swift test` for focus
 
 Click the menu bar item to open Overview, then choose Customize menu bar.
 Only selected metric icons and percentages appear; no redundant app logo is added.
-If no selected metrics are currently available, Glance shows one activity icon.
+If no selected metrics are currently available, Glance shows its geometric frame icon.
 Selections persist, including disconnected drives, which reappear when remounted.
 The keep-awake cup is optional and off by default.
 

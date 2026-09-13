@@ -6,9 +6,26 @@ import SwiftUI
 enum MetricIcons {
     static let cpu = vector(memory: false)
     static let memory = vector(memory: true)
+    static let glance = NSImage(size: NSSize(width: 24, height: 24), flipped: true) { _ in
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: 13, y: 4))
+        path.line(to: NSPoint(x: 7, y: 4))
+        path.curve(to: NSPoint(x: 4, y: 7), controlPoint1: NSPoint(x: 5, y: 4), controlPoint2: NSPoint(x: 4, y: 5))
+        path.line(to: NSPoint(x: 4, y: 17))
+        path.curve(to: NSPoint(x: 7, y: 20), controlPoint1: NSPoint(x: 4, y: 19), controlPoint2: NSPoint(x: 5, y: 20))
+        path.line(to: NSPoint(x: 17, y: 20))
+        path.curve(to: NSPoint(x: 20, y: 17), controlPoint1: NSPoint(x: 19, y: 20), controlPoint2: NSPoint(x: 20, y: 19))
+        path.line(to: NSPoint(x: 20, y: 11))
+        path.lineWidth = 3
+        NSColor.black.setStroke(); path.stroke()
+        NSColor.black.setFill()
+        NSBezierPath(roundedRect: NSRect(x: 17, y: 1, width: 6, height: 6), xRadius: 1.5, yRadius: 1.5).fill()
+        return true
+    }
     static func image(_ name: String) -> NSImage {
         if name == "cpu" { return cpu }
         if name == "memorychip" { return memory }
+        if name == "glance" { glance.isTemplate = true; return glance }
         return NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
     }
     private static func vector(memory: Bool) -> NSImage {

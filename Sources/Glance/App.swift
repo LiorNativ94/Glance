@@ -26,18 +26,29 @@ struct GlanceApp {
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var model: AppModel!
-    private let popover = NSPopover()
-    private var statusItem: NSStatusItem!
+    let popover = NSPopover()
+    private(set) var statusItem: NSStatusItem!
+    private let popoverAnchor = PopoverAnchorView()
     private var lastWidth: CGFloat = 0
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Reopening Glance should reveal the existing instance rather than duplicate menu items.
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "com.liornativ.Glance")
             .filter { $0.processIdentifier != getpid() }
         if let existing = others.first { existing.activate(); NSApp.terminate(nil); return }
-        model = AppModel()
+        configureMenuBar(model: AppModel())
+        if CommandLine.arguments.contains("--show") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.showPopover() } }
+    }
+    func configureMenuBar(model: AppModel) {
+        self.model = model
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.target = self
         statusItem.button?.action = #selector(togglePopover)
+        statusItem.button?.addSubview(popoverAnchor)
+        // Wait for the status window's final position, not the button's intermediate resize.
+        if let window = statusItem.button?.window {
+            NotificationCenter.default.addObserver(self, selector: #selector(updatePopoverAnchor),
+                                                   name: NSWindow.didMoveNotification, object: window)
+        }
         popover.behavior = .transient
         popover.animates = true
         popover.delegate = self
@@ -46,7 +57,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.contentViewController = host
         model.onMenuChange = { [weak self] in self?.updateStatus() }
         updateStatus()
-        if CommandLine.arguments.contains("--show") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.showPopover() } }
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showPopover(); return true
@@ -55,18 +65,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc private func togglePopover() {
         if popover.isShown { popover.performClose(nil) } else { showPopover() }
     }
-    private func showPopover() {
+    @objc private func updatePopoverAnchor() {
         guard let button = statusItem?.button else { return }
+        // A fixed-size view prevents AppKit from clipping the anchor when the button shrinks.
+        popoverAnchor.frame = NSRect(x: button.bounds.midX - 0.5, y: button.bounds.minY,
+                                     width: 1, height: button.bounds.height)
+        if popover.isShown { popover.positioningRect = popoverAnchor.bounds }
+    }
+    private func showPopover() {
+        guard statusItem?.button != nil else { return }
         guard !popover.isShown else { return }
         model.page = .overview
         NSApp.activate(ignoringOtherApps: true)
-        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        updatePopoverAnchor()
+        popover.show(relativeTo: popoverAnchor.bounds, of: popoverAnchor, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
     }
     private func updateStatus() {
         guard let button = statusItem?.button else { return }
         var items = model.visibleMetrics.map { (model.icon(for: $0), model.value(for: $0)) }
-        if items.isEmpty { items = [("waveform.path.ecg", "")] }
+        if items.isEmpty { items = [("glance", "")] }
         if model.showAwakeIcon && model.power.active { items.append(("cup.and.saucer", "")) }
         // Fixed-width digit cells keep neighboring menu items from shifting as percentages change.
         let font = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium)
@@ -97,4 +115,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         button.setAccessibilityIdentifier("glance-menu-bar")
         if width != lastWidth { statusItem.length = width + 10; lastWidth = width }
     }
+}
+
+private final class PopoverAnchorView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }

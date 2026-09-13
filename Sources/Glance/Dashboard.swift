@@ -132,7 +132,7 @@ struct Dashboard: View {
             HStack(spacing: 8) {
                 Spacer(minLength: 0)
                 if model.visibleMetrics.isEmpty {
-                    Image(systemName: "waveform.path.ecg").font(.system(size: 18))
+                    MetricIcon(name: "glance").frame(width: 18, height: 18)
                 } else {
                     ForEach(model.visibleMetrics, id: \.self) { id in
                         HStack(spacing: 4) {
@@ -144,7 +144,7 @@ struct Dashboard: View {
                 Spacer(minLength: 0)
             }.padding(14).frame(maxWidth: .infinity)
                 .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
-            Text("None selected? One activity icon stays visible.")
+            Text("None selected? The Glance icon stays visible.")
                 .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             HStack { Spacer(); Button("Done") { model.page = .overview }.buttonStyle(.borderedProminent) }
         }
@@ -153,7 +153,8 @@ struct Dashboard: View {
         VStack(alignment: .leading, spacing: 14) {
             pageHeader("Settings")
             HStack(spacing: 10) {
-                Image(systemName: "waveform.path.ecg").font(.system(size: 26)).foregroundStyle(.blue)
+                Image(nsImage: NSImage(named: "GlanceIcon") ?? MetricIcons.image("glance"))
+                    .resizable().frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Glance").font(.system(size: 18, weight: .semibold))
                     Text("Your Mac, at a glance.").font(.system(size: 10)).foregroundStyle(.secondary)

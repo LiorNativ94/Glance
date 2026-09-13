@@ -14,6 +14,23 @@ Built with Swift, AppKit, and SwiftUI, with no third-party package dependencies,
 - Optional launch at login.
 - A separately authorized, temporary closed-lid mode.
 
+## Screenshots
+
+The native interface shown with sample readings and generic drive names.
+
+<table>
+  <tr>
+    <th>Overview</th>
+    <th>Customize menu bar</th>
+    <th>Keep awake</th>
+  </tr>
+  <tr>
+    <td valign="top"><img src="docs/screenshots/overview.png" width="280" alt="Glance overview showing CPU and memory graphs, storage usage, and battery level"></td>
+    <td valign="top"><img src="docs/screenshots/customize.png" width="280" alt="Menu bar customization with selectable metrics and a live preview"></td>
+    <td valign="top"><img src="docs/screenshots/keep-awake.png" width="280" alt="An active one-hour keep-awake session with duration and display controls"></td>
+  </tr>
+</table>
+
 ## Requirements
 
 - macOS 14 Sonoma or later.

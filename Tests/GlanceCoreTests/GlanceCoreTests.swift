@@ -25,6 +25,17 @@ final class GlanceCoreTests: XCTestCase {
         let invalid = StorageVolume(id: "x", name: "X", path: "/", total: 1000, available: 1200, isInternal: true)
         XCTAssertEqual(invalid.used, 0)
     }
+    func testMountedDiskImagesAreNotListedAsDrives() {
+        // The startup disk is a sealed read-only volume and must survive the filter.
+        XCTAssertTrue(StorageFilter.isUserStorage(path: "/", isLocal: true, isReadOnly: true))
+        // An installer DMG left mounted is read-only and reports space the user can never change.
+        XCTAssertFalse(StorageFilter.isUserStorage(path: "/Volumes/Acta", isLocal: true, isReadOnly: true))
+        // A writable external drive is still real storage.
+        XCTAssertTrue(StorageFilter.isUserStorage(path: "/Volumes/SSD", isLocal: true, isReadOnly: false))
+        // Network mounts and hidden support volumes stay excluded.
+        XCTAssertFalse(StorageFilter.isUserStorage(path: "/Volumes/Share", isLocal: false, isReadOnly: false))
+        XCTAssertFalse(StorageFilter.isUserStorage(path: "/System/Volumes/VM", isLocal: true, isReadOnly: false))
+    }
     func testSleepLeaseEndsOnCrashHangDeadlineAndLowBattery() {
         XCTAssertTrue(LeasePolicy.shouldEnd(now: 100, lastHeartbeat: 100, parentAlive: false, deadline: nil, battery: nil))
         XCTAssertTrue(LeasePolicy.shouldEnd(now: 100, lastHeartbeat: 84, parentAlive: true, deadline: nil, battery: nil))

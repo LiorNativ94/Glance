@@ -73,16 +73,17 @@ public final class SystemReader {
 
     public static func storageVolumes() -> [StorageVolume] {
         let keys: Set<URLResourceKey> = [.volumeNameKey, .volumeUUIDStringKey, .volumeIsInternalKey,
-                                        .volumeIsLocalKey, .volumeTotalCapacityKey, .volumeAvailableCapacityKey]
+                                        .volumeIsLocalKey, .volumeIsReadOnlyKey,
+                                        .volumeTotalCapacityKey, .volumeAvailableCapacityKey]
         let urls = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: Array(keys),
                                                        options: [.skipHiddenVolumes]) ?? []
         var result: [StorageVolume] = []
         var seen = Set<String>()
         for url in [URL(fileURLWithPath: "/")] + urls {
-            guard let v = try? url.resourceValues(forKeys: keys), v.volumeIsLocal == true else { continue }
+            guard let v = try? url.resourceValues(forKeys: keys) else { continue }
             let isRoot = url.path == "/"
-            // APFS support volumes, simulator images and hidden mounts are not user storage.
-            guard isRoot || url.path.hasPrefix("/Volumes/") else { continue }
+            guard StorageFilter.isUserStorage(path: url.path, isLocal: v.volumeIsLocal == true,
+                                              isReadOnly: v.volumeIsReadOnly == true) else { continue }
             guard let total = v.volumeTotalCapacity, total > 0,
                   let available = v.volumeAvailableCapacity else { continue }
             let id = isRoot ? "internal" : "volume:\(v.volumeUUIDString ?? url.path)"

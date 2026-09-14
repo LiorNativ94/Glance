@@ -27,6 +27,19 @@ public struct StorageVolume: Identifiable, Equatable {
     }
 }
 
+/// Which mounts count as user storage.
+public enum StorageFilter {
+    /// The sealed system volume is read-only but is still the startup disk. Every other read-only mount is a
+    /// disk image or write-locked media: its usage cannot change, so a storage meter has nothing to report.
+    public static func isUserStorage(path: String, isLocal: Bool, isReadOnly: Bool) -> Bool {
+        guard isLocal else { return false }
+        if path == "/" { return true }
+        // APFS support volumes, simulator images and hidden mounts are not user storage.
+        guard path.hasPrefix("/Volumes/") else { return false }
+        return !isReadOnly
+    }
+}
+
 public struct BatteryReading {
     public let fraction: Double
     public let charging: Bool

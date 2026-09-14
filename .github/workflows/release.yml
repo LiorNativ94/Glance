@@ -4,12 +4,18 @@ on:
   push:
     tags:
       - 'v[0-9]*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to release (for example, v1.0)
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -20,6 +26,7 @@ jobs:
       - name: Check out tagged source
         uses: actions/checkout@v6
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag) || github.ref }}
           persist-credentials: false
 
       - name: Test
@@ -28,14 +35,14 @@ jobs:
 
       - name: Build and verify universal DMG
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: ./package-dmg.sh "$RELEASE_TAG"
 
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
           version="${RELEASE_TAG#v}"
           dmg="dist/Glance-$version-universal.dmg"

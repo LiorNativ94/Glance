@@ -78,6 +78,7 @@ The version at the bottom of Settings reads that same bundled version automatica
 The rendered Settings version and popover alignment tests require an interactive desktop and run locally rather than in release CI.
 No repository secrets are required; the workflow uses GitHub's built-in token with `contents: write` permission.
 Repository or organization policy must allow GitHub Actions and that permission.
+To build an existing tag manually, open **Actions → Release DMG → Run workflow** on `main` and enter the tag, such as `v1.0`.
 
 To build the same DMG locally with Xcode installed:
 

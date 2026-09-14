@@ -57,6 +57,36 @@ Open the installed copy before enabling launch at login.
 You can also open `Package.swift` in Xcode to work on the project.
 Use `build.sh` to assemble the complete app bundle, including the helper and icon resources.
 
+## Download and release
+
+Download the DMG from [GitHub Releases](https://github.com/LiorNativ94/Glance/releases), open it, and drag Glance into Applications.
+Release builds support both Apple Silicon and Intel Macs running macOS 14 or later.
+They use ad hoc signing and are not notarized, so macOS may block the first launch.
+If you trust the download, use **System Settings → Privacy & Security → Open Anyway** after attempting to open it.
+
+After committing and pushing the release workflow and your changes, publish a new version by pushing a tag:
+
+```sh
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+Use a new `vMAJOR.MINOR` or `vMAJOR.MINOR.PATCH` tag for each version, such as `v1.0` or `v1.2.3`.
+Prerelease suffixes such as `-beta.1` are not supported.
+The **Release DMG** GitHub Actions workflow tests the tagged code, builds both architectures, stamps the app version from the tag, verifies the signatures and DMG, and publishes a GitHub Release with the DMG and its SHA-256 checksum.
+The version at the bottom of Settings reads that same bundled version automatically.
+The popover alignment test requires an interactive desktop and runs locally rather than in release CI.
+No repository secrets are required; the workflow uses GitHub's built-in token with `contents: write` permission.
+Repository or organization policy must allow GitHub Actions and that permission.
+
+To build the same DMG locally with Xcode installed:
+
+```sh
+./package-dmg.sh v1.2.3
+```
+
+The output is `dist/Glance-1.2.3-universal.dmg` and its `.sha256` checksum file.
+
 ## Usage
 
 Click Glance’s menu bar item to open the overview.
@@ -145,6 +175,8 @@ For sleep changes, verify stopping a session releases assertions with `pmset -g 
 | `Resources` | App metadata, icon generation, and third-party notices. |
 | `Tests` | Core, session, and popover regression tests. |
 | `build.sh` | Release compilation, app assembly, and local code signing. |
+| `package-dmg.sh` | Universal app build, version stamping, and DMG packaging. |
+| `.github/workflows/release.yml` | Version tag builds and GitHub Release publication. |
 
 ## Privacy and repository hygiene
 

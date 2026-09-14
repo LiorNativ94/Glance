@@ -168,7 +168,8 @@ struct Dashboard: View {
                 .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Divider()
             HStack {
-                Text("Version 1.0 · Runs entirely on your Mac").font(.system(size: 10)).foregroundStyle(.secondary)
+                Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development") · Runs entirely on your Mac")
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
                 Spacer()
                 Button("Quit Glance") { NSApplication.shared.terminate(nil) }
             }

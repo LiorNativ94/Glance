@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
 
       - name: Test
-        # Popover positioning requires an interactive desktop and is checked locally.
+        # Rendered Settings and popover checks require a desktop and run locally.
         run: swift test --skip PopoverAlignmentTests
 
       - name: Build and verify universal DMG

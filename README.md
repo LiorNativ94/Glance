@@ -75,7 +75,7 @@ Use a new `vMAJOR.MINOR` or `vMAJOR.MINOR.PATCH` tag for each version, such as `
 Prerelease suffixes such as `-beta.1` are not supported.
 The **Release DMG** GitHub Actions workflow tests the tagged code, builds both architectures, stamps the app version from the tag, verifies the signatures and DMG, and publishes a GitHub Release with the DMG and its SHA-256 checksum.
 The version at the bottom of Settings reads that same bundled version automatically.
-The popover alignment test requires an interactive desktop and runs locally rather than in release CI.
+The rendered Settings version and popover alignment tests require an interactive desktop and run locally rather than in release CI.
 No repository secrets are required; the workflow uses GitHub's built-in token with `contents: write` permission.
 Repository or organization policy must allow GitHub Actions and that permission.
 
@@ -148,8 +148,8 @@ swift test
 codesign --verify --deep --strict dist/Glance.app
 ```
 
-Tests cover reading calculations, metric selections, sleep-session policy, and visible popover positioning during menu bar customization.
-The AppKit alignment test opens a temporary menu bar item and popover, so run it in a logged-in macOS desktop session.
+Tests cover reading calculations, metric selections, sleep-session policy, the rendered Settings version, and visible popover positioning during menu bar customization.
+The AppKit tests open a temporary menu bar item and popover, so run them in a logged-in macOS desktop session.
 Power-controller tests briefly exercise normal keep-awake assertions; they do not authorize closed-lid mode.
 
 For a local diagnostic snapshot:

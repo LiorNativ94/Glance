@@ -1,8 +1,38 @@
 import AppKit
 import XCTest
+import Vision
 @testable import Glance
 
 final class PopoverAlignmentTests: XCTestCase {
+    func testSettingsShowsBundledVersion() throws {
+        _ = NSApplication.shared
+        let suite = "Glance.SettingsVersionTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = AppModel(defaults: defaults)
+        model.page = .settings
+        let delegate = AppDelegate()
+        delegate.configureMenuBar(model: model)
+        defer {
+            delegate.popover.close()
+            NSStatusBar.system.removeStatusItem(delegate.statusItem)
+        }
+        settleLayout()
+        try XCTUnwrap(delegate.statusItem.button).performClick(nil)
+        model.page = .settings
+        settleLayout()
+        XCTAssertTrue(delegate.popover.isShown)
+        let view = try XCTUnwrap(delegate.popover.contentViewController?.view)
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development"
+        let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        try VNImageRequestHandler(cgImage: XCTUnwrap(bitmap.cgImage)).perform([request])
+        let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ")
+        XCTAssertTrue(text.contains("Version \(version)"), text)
+    }
+
     func testOpenPopoverTracksMenuBarCustomization() throws {
         _ = NSApplication.shared
         let suite = "Glance.PopoverAlignmentTests.\(UUID().uuidString)"

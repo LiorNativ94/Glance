@@ -8,7 +8,7 @@ let package = Package(
                .executable(name: "GlancePowerHelper", targets: ["GlancePowerHelper"])],
     targets: [
         .target(name: "GlanceCore"),
-        .executableTarget(name: "Glance", dependencies: ["GlanceCore"]),
+        .executableTarget(name: "Glance", dependencies: ["GlanceCore"], resources: [.process("Resources")]),
         .executableTarget(name: "GlancePowerHelper", dependencies: ["GlanceCore"]),
         .testTarget(name: "GlanceCoreTests", dependencies: ["GlanceCore", "Glance"])
     ],

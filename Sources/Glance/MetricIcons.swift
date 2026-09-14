@@ -6,6 +6,8 @@ import SwiftUI
 enum MetricIcons {
     static let cpu = vector(memory: false)
     static let memory = vector(memory: true)
+    static let claude = providerLogo("claude")
+    static let chatgpt = providerLogo("chatgpt")
     static let glance = NSImage(size: NSSize(width: 24, height: 24), flipped: true) { _ in
         let path = NSBezierPath()
         path.move(to: NSPoint(x: 13, y: 4))
@@ -26,7 +28,17 @@ enum MetricIcons {
         if name == "cpu" { return cpu }
         if name == "memorychip" { return memory }
         if name == "glance" { glance.isTemplate = true; return glance }
+        if name == "claude-usage" { return claude }
+        if name == "codex-usage" { return chatgpt }
         return NSImage(systemSymbolName: name, accessibilityDescription: nil) ?? NSImage()
+    }
+    private static func providerLogo(_ name: String) -> NSImage {
+        let bundle = Bundle.main.url(forResource: "Glance_Glance", withExtension: "bundle")
+            .flatMap(Bundle.init(url:)) ?? Bundle.module
+        let image = NSImage(contentsOf: bundle.url(forResource: name, withExtension: "svg")!)!
+        image.isTemplate = true
+        image.accessibilityDescription = name == "chatgpt" ? "ChatGPT" : "Claude"
+        return image
     }
     private static func vector(memory: Bool) -> NSImage {
         let image = NSImage(size: NSSize(width: 24, height: 24), flipped: true) { _ in

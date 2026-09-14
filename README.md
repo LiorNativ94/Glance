@@ -1,9 +1,10 @@
 # Glance
 
 A lightweight native macOS menu bar utility for checking your Mac’s resources and keeping it awake when needed.
-Built with Swift, AppKit, and SwiftUI, with no third-party package dependencies, accounts, telemetry, or network requests.
+Built with Swift, AppKit, and SwiftUI, with no third-party package dependencies or telemetry.
+System readings stay local; optional Claude and Codex subscription connections fetch usage directly from their providers.
 
-**[Download Glance v1.0 for macOS](https://github.com/LiorNativ94/Glance/releases/download/v1.0/Glance-1.0-universal.dmg)** · [All releases](https://github.com/LiorNativ94/Glance/releases)
+**[Download Glance v1.1 for macOS](https://github.com/LiorNativ94/Glance/releases/download/v1.1/Glance-1.1-universal.dmg)** · [All releases](https://github.com/LiorNativ94/Glance/releases)
 
 ## Features
 
@@ -11,6 +12,8 @@ Built with Swift, AppKit, and SwiftUI, with no third-party package dependencies,
 - Battery level and charging status.
 - Used and available space for the startup disk and connected local drives.
 - Customizable menu bar metrics with persistent selections.
+- An optional notch strip that expands into the same dashboard.
+- Claude and Codex subscription usage, reset countdowns, and optional menu bar percentages.
 - A compact geometric app icon and matching fallback menu bar glyph.
 - Timed keep-awake sessions, with an optional display sleep override.
 - Optional launch at login.
@@ -40,12 +43,12 @@ The native interface shown with sample readings and generic drive names.
 
 ## Install
 
-1. Download the [v1.0 DMG](https://github.com/LiorNativ94/Glance/releases/download/v1.0/Glance-1.0-universal.dmg).
+1. Download the [v1.1 DMG](https://github.com/LiorNativ94/Glance/releases/download/v1.1/Glance-1.1-universal.dmg).
 2. Open the DMG and drag Glance into Applications, quitting any existing copy first.
 3. Open Glance from Applications and look for its menu bar item.
 
 No Xcode or Swift installation is needed to use the downloaded app.
-The version at the bottom of **Settings…** matches the shipped app version: `1.0` for this release.
+The version at the bottom of **Settings…** matches the shipped app version: `1.1` for this release.
 Open the installed copy before enabling launch at login.
 
 Release builds use ad hoc signing and are not notarized, so macOS may block the first launch.
@@ -103,7 +106,7 @@ The output is `dist/Glance-1.0-universal.dmg` and its `.sha256` checksum file.
 ## Usage
 
 Click Glance’s menu bar item to open the overview.
-Choose **Menu bar…** to select which metrics appear in the menu bar.
+Choose **Icons…** to select which metrics appear in the menu bar.
 Selections persist across launches, including disconnected drives, which reappear when remounted.
 If no selected metrics are available, the Glance glyph remains visible.
 
@@ -112,6 +115,44 @@ The optional **Keep display on** setting applies only while a session is active.
 The menu bar cup indicator is optional and disabled by default.
 
 Open **Settings…** to configure launch at login or quit the app.
+
+### Notch
+
+Choose **Show in → Notch** at the top of the dropdown.
+Compact wings beside the camera show only the available metrics selected in **Icons…**, in the same order as the menu bar.
+Connecting a subscription makes it available to select; it does not automatically add its icon.
+The wings shrink to fit the selected metrics, with no extra Glance logo unless no metrics are selected.
+The collapsed view stays entirely within the menu-bar row, leaving browser tabs and application content clear.
+Click it to open the dashboard; click its header, press Escape, or click outside to collapse it.
+Notch mode hides Glance’s menu bar item; choosing **Show in → Menu bar** restores it and hides the notch view.
+The same picker appears in both dropdowns, and switching moves the open dashboard to the selected location.
+Glance uses a notched display when connected, otherwise the center of the main display’s menu-bar row.
+The panel follows display changes and is available across Spaces.
+
+### Claude and Codex subscriptions
+
+Open **AI subscriptions** from the dashboard, or **Settings… → Claude & Codex subscriptions…**.
+Enable either provider to reuse its existing local sign-in.
+The cards show reported plan names, session and weekly usage, and reset countdowns.
+Claude also shows Sonnet and Opus weekly windows when returned by the provider.
+In **Icons…**, select **Claude remaining** or **Codex remaining** to show the lowest remaining percentage across the reported limits.
+
+- **Codex:** sign in with `codex login` using your ChatGPT subscription.
+  Glance reads `~/.codex/auth.json`, or `$CODEX_HOME/auth.json` when that environment variable is set for Glance.
+  API-key-only and Keychain-only Codex sign-ins are not supported by this connection.
+- **Claude:** sign in with Claude Code.
+  Glance reads `~/.claude/.credentials.json` or the `Claude Code-credentials` Keychain item.
+  A custom `$CLAUDE_CONFIG_DIR` uses only that directory’s credentials file.
+  The sign-in needs the `user:profile` scope; MCP-only credentials cannot supply subscription usage.
+  macOS may request Keychain access when connecting or clicking **Refresh**.
+
+Usage refreshes every five minutes and after wake; **Refresh** requests an update immediately unless the provider has imposed a cooldown.
+Unavailable data displays a message instead of a zero-percent reading.
+Expired reset times are marked as due until a fresh reading arrives.
+If a sign-in expires, renew it in its owning CLI and click **Refresh**.
+Glance never modifies or refreshes the source credentials and never runs a coding session to collect usage.
+These provider endpoints are undocumented and can change.
+This integration follows [CodexBar’s Codex](https://github.com/steipete/CodexBar/blob/main/docs/codex.md) and [Claude](https://github.com/steipete/CodexBar/blob/main/docs/claude.md) OAuth approach; it does not require CodexBar, import browser cookies, or provide billing history.
 
 ## How readings work
 
@@ -162,6 +203,8 @@ codesign --verify --deep --strict dist/Glance.app
 ```
 
 Tests cover reading calculations, metric selections, sleep-session policy, the rendered Settings version, and visible popover positioning during menu bar customization.
+Subscription tests cover provider response formats, account-scoped requests, missing and expired credentials, cooldowns, and disconnecting during a refresh.
+The native notch check renders synthetic subscription readings and verifies placement, expansion, and dismissal.
 The AppKit tests open a temporary menu bar item and popover, so run them in a logged-in macOS desktop session.
 Power-controller tests briefly exercise normal keep-awake assertions; they do not authorize closed-lid mode.
 
@@ -195,6 +238,10 @@ For sleep changes, verify stopping a session releases assertions with `pmset -g 
 
 Glance processes system readings locally.
 Metric selections and the optional cup indicator are stored in macOS user defaults, outside the repository.
+Notch visibility and enabled subscription providers are also stored in user defaults.
+Subscription connections are off by default and read local credentials only for enabled providers.
+Access tokens are sent only to the corresponding provider’s fixed HTTPS usage endpoint; redirects are refused.
+Glance stores no copies of credentials or usage readings on disk, and background Keychain reads never prompt.
 Closed-lid sessions use temporary local heartbeat and status files.
 Administrator authorization is handled by macOS; the app does not store an administrator password.
 
@@ -206,4 +253,6 @@ Review staged changes and commit author metadata before publishing, and use a Gi
 
 CPU and memory glyphs are adapted from Lucide icons.
 Their ISC license and attribution are included in [Resources/Lucide-LICENSE.txt](Resources/Lucide-LICENSE.txt).
+Claude and ChatGPT logo assets are sourced from CodexBar and retain their [MIT notice](Sources/Glance/Resources/CodexBar-LICENSE.txt).
+The logos identify their respective providers and remain their owners’ trademarks.
 That notice covers the attributed icons; it is not a license for the entire project.

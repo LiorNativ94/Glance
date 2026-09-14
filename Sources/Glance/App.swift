@@ -30,13 +30,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private(set) var statusItem: NSStatusItem!
     private let popoverAnchor = PopoverAnchorView()
     private var lastWidth: CGFloat = 0
+    private(set) var notch: NotchController?
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Reopening Glance should reveal the existing instance rather than duplicate menu items.
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "com.liornativ.Glance")
             .filter { $0.processIdentifier != getpid() }
         if let existing = others.first { existing.activate(); NSApp.terminate(nil); return }
         configureMenuBar(model: AppModel())
-        if CommandLine.arguments.contains("--show") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.showPopover() } }
+        if CommandLine.arguments.contains("--show") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.showDashboard() } }
     }
     func configureMenuBar(model: AppModel) {
         self.model = model
@@ -56,10 +57,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         host.sizingOptions = [.preferredContentSize]
         popover.contentViewController = host
         model.onMenuChange = { [weak self] in self?.updateStatus() }
+        notch = NotchController(model: model)
+        notch?.onExpand = { [weak self] in self?.popover.performClose(nil) }
+        model.onNotchChange = { [weak self] in
+            DispatchQueue.main.async { self?.updateDisplayMode() }
+        }
+        statusItem.isVisible = !model.showInNotch
         updateStatus()
     }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        showPopover(); return true
+        showDashboard(); return true
     }
     func applicationWillTerminate(_ notification: Notification) { model?.power.stop() }
     @objc private func togglePopover() {
@@ -72,10 +79,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
                                      width: 1, height: button.bounds.height)
         if popover.isShown { popover.positioningRect = popoverAnchor.bounds }
     }
-    private func showPopover() {
+    private func updateDisplayMode() {
+        let wasOpen = popover.isShown || notch?.expanded == true
+        if model.showInNotch { popover.close() }
+        statusItem.isVisible = !model.showInNotch
+        notch?.update()
+        if model.showInNotch {
+            if wasOpen { notch?.expand(resetPage: false) }
+        } else {
+            updateStatus()
+            if wasOpen {
+                // Give the restored status item a layout pass before anchoring its dropdown.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    guard let self, !self.model.showInNotch else { return }
+                    self.showPopover(resetPage: false)
+                }
+            }
+        }
+    }
+    private func showDashboard() {
+        if model.showInNotch { notch?.expand() } else { showPopover() }
+    }
+    private func showPopover(resetPage: Bool = true) {
+        guard !model.showInNotch else { return }
         guard statusItem?.button != nil else { return }
         guard !popover.isShown else { return }
-        model.page = .overview
+        notch?.collapse()
+        if resetPage { model.page = .overview }
         NSApp.activate(ignoringOtherApps: true)
         updatePopoverAnchor()
         popover.show(relativeTo: popoverAnchor.bounds, of: popoverAnchor, preferredEdge: .minY)

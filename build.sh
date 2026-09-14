@@ -13,6 +13,7 @@ if [[ -n "${GLANCE_VERSION:-}" ]]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $GLANCE_VERSION" "$GLANCE_APP/Contents/Info.plist"
 fi
 cp Resources/Lucide-LICENSE.txt "$GLANCE_APP/Contents/Resources/Lucide-LICENSE.txt"
+cp -R "$GLANCE_BIN/Glance_Glance.bundle" "$GLANCE_APP/Contents/Resources/"
 swift Resources/MakeIcon.swift "$GLANCE_APP/Contents/Resources/GlanceIcon.icns"
 codesign --force --sign - "$GLANCE_APP/Contents/MacOS/GlancePowerHelper"
 codesign --force --sign - "$GLANCE_APP"

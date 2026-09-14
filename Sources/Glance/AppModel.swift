@@ -15,9 +15,14 @@ final class AppModel: ObservableObject {
         didSet { defaults.set(showAwakeIcon, forKey: "showAwakeIcon"); onMenuChange?() }
     }
     @Published var launchAtLogin = false
+    @Published var showInNotch: Bool {
+        didSet { defaults.set(showInNotch, forKey: "showInNotch"); onNotchChange?() }
+    }
     @Published var settingsError: String?
     let power = PowerController()
+    let subscriptions: SubscriptionStore
     var onMenuChange: (() -> Void)?
+    var onNotchChange: (() -> Void)?
     private let defaults: UserDefaults
     private let reader = SystemReader()
     private let queue = DispatchQueue(label: "Glance.readings", qos: .utility)
@@ -25,19 +30,30 @@ final class AppModel: ObservableObject {
     private var reading = false
     private var observers: [NSObjectProtocol] = []
     private var powerChanges: AnyCancellable?
-    enum Page { case overview, customize, settings, lidSetup }
+    private var subscriptionChanges: AnyCancellable?
+    enum Page { case overview, customize, settings, lidSetup, subscriptions }
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, subscriptions: SubscriptionStore? = nil) {
         self.defaults = defaults
+        self.subscriptions = subscriptions ?? SubscriptionStore(defaults: defaults)
+        showInNotch = defaults.bool(forKey: "showInNotch")
         selected = defaults.stringArray(forKey: "selectedMetrics") ?? MetricSelection.defaults
         showAwakeIcon = defaults.bool(forKey: "showAwakeIcon")
         launchAtLogin = SMAppService.mainApp.status == .enabled
         powerChanges = power.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async { self?.onMenuChange?() }
         }
+        subscriptionChanges = self.subscriptions.objectWillChange.sink { [weak self] in
+            DispatchQueue.main.async {
+                self?.objectWillChange.send()
+                self?.onMenuChange?()
+            }
+        }
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification, NSWorkspace.didWakeNotification] {
             observers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: name, object: nil, queue: .main) {
-                [weak self] _ in self?.sample(refreshStorage: true)
+                [weak self] _ in
+                self?.sample(refreshStorage: true)
+                if name == NSWorkspace.didWakeNotification { self?.subscriptions.refreshAll() }
             })
         }
         sample(refreshStorage: true)
@@ -53,6 +69,8 @@ final class AppModel: ObservableObject {
         var items = [("cpu", "CPU", "cpu"), ("memory", "Memory", "memorychip")]
         items += snapshot.volumes.map { ($0.id, $0.name, $0.isInternal ? "internaldrive" : "externaldrive") }
         if snapshot.battery != nil { items.append(("battery", "Battery", "battery.100")) }
+        items += SubscriptionProvider.allCases.filter { subscriptions.enabled.contains($0) }
+            .map { ($0.rawValue, "\($0.name) remaining", "\($0.rawValue)-usage") }
         return items
     }
     var visibleMetrics: [String] {
@@ -65,6 +83,7 @@ final class AppModel: ObservableObject {
         case "cpu": return ReadingFormat.percent(snapshot.cpu)
         case "memory": return ReadingFormat.percent(snapshot.memoryFraction)
         case "battery": return ReadingFormat.percent(snapshot.battery?.fraction)
+        case "claude", "codex": return ReadingFormat.percent(subscriptions.remaining(SubscriptionProvider(rawValue: id)!))
         default: return ReadingFormat.percent(snapshot.volumes.first { $0.id == id }?.fraction)
         }
     }

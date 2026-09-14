@@ -6,11 +6,19 @@ struct Dashboard: View {
     @ObservedObject var power: PowerController
     var body: some View {
         VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Text("Show in").font(.system(size: 11)).foregroundStyle(.secondary)
+                Picker("Show in", selection: $model.showInNotch) {
+                    Text("Menu bar").tag(false)
+                    Text("Notch").tag(true)
+                }.labelsHidden().pickerStyle(.segmented).accessibilityIdentifier("display-mode")
+            }.padding(.bottom, 12)
             switch model.page {
             case .overview: overview
             case .customize: customization
             case .settings: settings
             case .lidSetup: lidSetup
+            case .subscriptions: subscriptionSettings
             }
         }
         .frame(width: 292)
@@ -89,9 +97,35 @@ struct Dashboard: View {
                 }
             }.padding(.top, 12)
             line
+            Button { model.page = .subscriptions } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label("AI subscriptions", systemImage: "sparkles").font(.system(size: 11, weight: .medium))
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.system(size: 10)).foregroundStyle(.secondary)
+                    }
+                    if model.subscriptions.enabled.isEmpty {
+                        Text("Add Claude or Codex usage").font(.system(size: 10)).foregroundStyle(.secondary)
+                    } else {
+                        ForEach(SubscriptionProvider.allCases.filter { model.subscriptions.enabled.contains($0) }) { provider in
+                            HStack {
+                                MetricIcon(name: "\(provider.rawValue)-usage").frame(width: 12, height: 12)
+                                Text(provider.name)
+                                Spacer()
+                                if let remaining = model.subscriptions.remaining(provider) {
+                                    Text("\(ReadingFormat.percent(remaining)) left")
+                                } else {
+                                    Text(model.subscriptions.states[provider]?.refreshing == true ? "Refreshing…" : "Open for details")
+                                }
+                            }.font(.system(size: 10)).foregroundStyle(.secondary)
+                        }
+                    }
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("subscriptions")
+            line
             Button { model.page = .customize } label: {
                 HStack(spacing: 8) {
-                    symbol("slider.horizontal.3"); Text("Menu bar…").font(.system(size: 11))
+                    symbol("slider.horizontal.3"); Text("Icons…").font(.system(size: 11))
                     Spacer(); Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
                 }.contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("customize-menu-bar")
@@ -107,8 +141,8 @@ struct Dashboard: View {
     }
     private var customization: some View {
         VStack(alignment: .leading, spacing: 12) {
-            pageHeader("Customize menu bar")
-            Text("Choose your menu bar items.")
+            pageHeader("Customize icons")
+            Text("Choose the icons shown in the menu bar or notch.")
                 .font(.system(size: 10)).foregroundStyle(.secondary)
             ScrollView {
                 VStack(spacing: 12) {
@@ -162,17 +196,32 @@ struct Dashboard: View {
             }
             Toggle("Open Glance at login", isOn: Binding(get: { model.launchAtLogin }, set: model.setLogin))
                 .toggleStyle(.checkbox)
+            Text("Choose Menu bar or Notch above. Notch mode sits beside the camera; click it to open Glance. Displays without a notch use the center of the menu-bar row.")
+                .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Button("Claude & Codex subscriptions…") { model.page = .subscriptions }
             Text("Readings update every 2 seconds. Storage refreshes every 15 seconds and when drives connect or disconnect.")
                 .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Text("Keep-awake stops at 10% battery. Lid-closed mode is temporary and needs authorization for each session.")
                 .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Divider()
             HStack {
-                Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development") · Runs entirely on your Mac")
+                Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "Development")")
                     .font(.system(size: 10)).foregroundStyle(.secondary)
                 Spacer()
                 Button("Quit Glance") { NSApplication.shared.terminate(nil) }
             }
+        }
+    }
+    private var subscriptionSettings: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            pageHeader("AI subscriptions")
+            Text("Connect existing Claude Code and Codex sign-ins to see your plan’s usage limits.")
+                .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            ScrollView {
+                SubscriptionCards(store: model.subscriptions)
+            }.scrollIndicators(.hidden).frame(height: 380)
+            Text("Updates every 5 minutes. Menu bar percentages show the lowest remaining limit. Add them in Icons…")
+                .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }
     private var lidSetup: some View {

@@ -3,6 +3,8 @@
 A lightweight native macOS menu bar utility for checking your Mac’s resources and keeping it awake when needed.
 Built with Swift, AppKit, and SwiftUI, with no third-party package dependencies, accounts, telemetry, or network requests.
 
+**[Download Glance v1.0 for macOS](https://github.com/LiorNativ94/Glance/releases/download/v1.0/Glance-1.0-universal.dmg)** · [All releases](https://github.com/LiorNativ94/Glance/releases)
+
 ## Features
 
 - CPU and memory usage with recent history graphs.
@@ -34,11 +36,26 @@ The native interface shown with sample readings and generic drive names.
 ## Requirements
 
 - macOS 14 Sonoma or later.
-- A Swift 6.0 or newer toolchain, available through compatible Xcode or Command Line Tools installations.
+- An Apple Silicon or Intel Mac; the same DMG supports both.
 
-Check your installed toolchain with `swift --version`.
+## Install
+
+1. Download the [v1.0 DMG](https://github.com/LiorNativ94/Glance/releases/download/v1.0/Glance-1.0-universal.dmg).
+2. Open the DMG and drag Glance into Applications, quitting any existing copy first.
+3. Open Glance from Applications and look for its menu bar item.
+
+No Xcode or Swift installation is needed to use the downloaded app.
+The version at the bottom of **Settings…** matches the shipped app version: `1.0` for this release.
+Open the installed copy before enabling launch at login.
+
+Release builds use ad hoc signing and are not notarized, so macOS may block the first launch.
+If you trust the download, use **System Settings → Privacy & Security → Open Anyway** after attempting to open it.
+Each [GitHub Release](https://github.com/LiorNativ94/Glance/releases) includes a SHA-256 checksum alongside the DMG.
 
 ## Build and run
+
+Building from source requires a Swift 6.0 or newer toolchain, available through compatible Xcode or Command Line Tools installations.
+Check your installed toolchain with `swift --version`.
 
 From the repository directory:
 
@@ -57,18 +74,13 @@ Open the installed copy before enabling launch at login.
 You can also open `Package.swift` in Xcode to work on the project.
 Use `build.sh` to assemble the complete app bundle, including the helper and icon resources.
 
-## Download and release
+## Publishing releases
 
-Download the DMG from [GitHub Releases](https://github.com/LiorNativ94/Glance/releases), open it, and drag Glance into Applications.
-Release builds support both Apple Silicon and Intel Macs running macOS 14 or later.
-They use ad hoc signing and are not notarized, so macOS may block the first launch.
-If you trust the download, use **System Settings → Privacy & Security → Open Anyway** after attempting to open it.
-
-After committing and pushing the release workflow and your changes, publish a new version by pushing a tag:
+After committing and pushing your changes, publish a new version by pushing a new tag:
 
 ```sh
-git tag v1.2.3
-git push origin v1.2.3
+git tag v1.0.1
+git push origin v1.0.1
 ```
 
 Use a new `vMAJOR.MINOR` or `vMAJOR.MINOR.PATCH` tag for each version, such as `v1.0` or `v1.2.3`.
@@ -83,10 +95,10 @@ To build an existing tag manually, open **Actions → Release DMG → Run workfl
 To build the same DMG locally with Xcode installed:
 
 ```sh
-./package-dmg.sh v1.2.3
+./package-dmg.sh v1.0
 ```
 
-The output is `dist/Glance-1.2.3-universal.dmg` and its `.sha256` checksum file.
+The output is `dist/Glance-1.0-universal.dmg` and its `.sha256` checksum file.
 
 ## Usage
 

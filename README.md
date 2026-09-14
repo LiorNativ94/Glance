@@ -77,6 +77,7 @@ Memory usage includes non-purgeable internal pages, wired pages, and compressed 
 Memory is displayed in binary gigabytes; storage uses decimal units.
 
 Storage covers the startup disk and visible local volumes mounted under `/Volumes`.
+Read-only mounts, such as installer disk images left mounted, are excluded because their usage cannot change.
 Used space is calculated as total capacity minus available capacity.
 APFS shares free space between volumes, so readings may differ from Finder’s estimates of reclaimable space.
 

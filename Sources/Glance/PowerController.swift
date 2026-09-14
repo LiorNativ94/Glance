@@ -49,6 +49,12 @@ final class PowerController: ObservableObject {
         duration = minutes
         if active { resetDeadline() }
     }
+    func extendSession(by minutes: Int) {
+        guard active, let deadline, deadline > Date(), minutes > 0 else { return }
+        self.deadline = deadline.addingTimeInterval(Double(minutes) * 60)
+        now = .now
+        updateHeartbeat()
+    }
     private func resetDeadline() {
         now = .now; deadline = duration == 0 ? nil : now.addingTimeInterval(Double(duration) * 60)
         updateHeartbeat()

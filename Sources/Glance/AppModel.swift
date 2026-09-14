@@ -19,6 +19,32 @@ final class AppModel: ObservableObject {
         didSet { defaults.set(showInNotch, forKey: "showInNotch"); onNotchChange?() }
     }
     @Published var settingsError: String?
+    @Published var sectionOrder: [DashboardSection] {
+        didSet { defaults.set(sectionOrder.map(\.rawValue), forKey: "dashboardSectionOrder") }
+    }
+    @Published var hiddenSections: Set<DashboardSection> {
+        didSet { defaults.set(hiddenSections.map(\.rawValue), forKey: "hiddenDashboardSections") }
+    }
+    @Published private(set) var enabledAlerts: Set<AlertKind> {
+        didSet {
+            defaults.set(enabledAlerts.map(\.rawValue), forKey: "enabledAlerts")
+            updatePressureMonitoring()
+            evaluateAlerts()
+        }
+    }
+    @Published private(set) var pendingAlerts: Set<AlertKind> = []
+    @Published private(set) var alertThresholds: AlertThresholds {
+        didSet {
+            defaults.set(alertThresholds.aiRemainingPercent, forKey: "alertAIRemainingPercent")
+            defaults.set(alertThresholds.storageFreePercent, forKey: "alertStorageFreePercent")
+            defaults.set(alertThresholds.storageFreeGB, forKey: "alertStorageFreeGB")
+            evaluateAlerts()
+        }
+    }
+    @Published private(set) var memoryPressure = false
+    var alertToReview: GlanceAlert?
+    var authorizeAlerts: ((@escaping (Bool, String?) -> Void) -> Void)?
+    var onAlert: ((GlanceAlert) -> Void)?
     let power = PowerController()
     let subscriptions: SubscriptionStore
     var onMenuChange: (() -> Void)?
@@ -31,11 +57,19 @@ final class AppModel: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private var powerChanges: AnyCancellable?
     private var subscriptionChanges: AnyCancellable?
-    enum Page { case overview, customize, settings, lidSetup, subscriptions }
+    private var pressureSource: DispatchSourceMemoryPressure?
+    private var alertPolicy = AlertPolicy()
+    enum Page { case overview, customize, settings, lidSetup, subscriptions, dashboardLayout, alerts, alertDetail }
 
     init(defaults: UserDefaults = .standard, subscriptions: SubscriptionStore? = nil) {
         self.defaults = defaults
         self.subscriptions = subscriptions ?? SubscriptionStore(defaults: defaults)
+        alertThresholds = AlertThresholds(aiRemainingPercent: defaults.object(forKey: "alertAIRemainingPercent") as? Int ?? 20,
+                                          storageFreePercent: defaults.object(forKey: "alertStorageFreePercent") as? Int ?? 5,
+                                          storageFreeGB: defaults.object(forKey: "alertStorageFreeGB") as? Int ?? 10)
+        sectionOrder = DashboardSection.restored(defaults.stringArray(forKey: "dashboardSectionOrder"))
+        hiddenSections = Set((defaults.stringArray(forKey: "hiddenDashboardSections") ?? []).compactMap(DashboardSection.init(rawValue:)))
+        enabledAlerts = Set((defaults.stringArray(forKey: "enabledAlerts") ?? []).compactMap(AlertKind.init(rawValue:)))
         showInNotch = defaults.bool(forKey: "showInNotch")
         selected = defaults.stringArray(forKey: "selectedMetrics") ?? MetricSelection.defaults
         showAwakeIcon = defaults.bool(forKey: "showAwakeIcon")
@@ -47,6 +81,7 @@ final class AppModel: ObservableObject {
             DispatchQueue.main.async {
                 self?.objectWillChange.send()
                 self?.onMenuChange?()
+                self?.evaluateAlerts()
             }
         }
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification, NSWorkspace.didWakeNotification] {
@@ -57,12 +92,66 @@ final class AppModel: ObservableObject {
             })
         }
         sample(refreshStorage: true)
+        updatePressureMonitoring()
         samplingTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.sample() }
         samplingTimer?.tolerance = 0.3
     }
     deinit {
         samplingTimer?.invalidate()
+        pressureSource?.cancel()
         observers.forEach { NSWorkspace.shared.notificationCenter.removeObserver($0) }
+    }
+
+    var visibleSections: [DashboardSection] {
+        sectionOrder.filter { section in
+            if section == .awake && power.active { return true }
+            return !hiddenSections.contains(section) && (section != .battery || snapshot.battery != nil)
+        }
+    }
+    func moveSection(_ section: DashboardSection, by offset: Int) {
+        guard let index = sectionOrder.firstIndex(of: section), sectionOrder.indices.contains(index + offset) else { return }
+        sectionOrder.swapAt(index, index + offset)
+    }
+    func setAlertEnabled(_ kind: AlertKind, _ enabled: Bool) {
+        guard !pendingAlerts.contains(kind) else { return }
+        if !enabled { enabledAlerts.remove(kind); return }
+        guard let authorizeAlerts else { return }
+        pendingAlerts.insert(kind)
+        authorizeAlerts { [weak self] allowed, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.pendingAlerts.remove(kind)
+                if allowed { self.enabledAlerts.insert(kind) }
+                else { self.settingsError = error ?? "Allow Glance notifications in System Settings → Notifications, then try again." }
+            }
+        }
+    }
+    func retryAlert(_ alert: GlanceAlert) { alertPolicy.retry(alert) }
+    func updateAlertThresholds(ai: Int? = nil, storagePercent: Int? = nil, storageGB: Int? = nil) {
+        alertThresholds = AlertThresholds(aiRemainingPercent: ai ?? alertThresholds.aiRemainingPercent,
+                                          storageFreePercent: storagePercent ?? alertThresholds.storageFreePercent,
+                                          storageFreeGB: storageGB ?? alertThresholds.storageFreeGB)
+    }
+    private func evaluateAlerts() {
+        guard let onAlert else { return }
+        let usages = subscriptions.states.compactMapValues(\.usage)
+        for alert in alertPolicy.evaluate(enabled: enabledAlerts, snapshot: snapshot,
+                                           memoryPressure: memoryPressure, usages: usages, thresholds: alertThresholds) { onAlert(alert) }
+    }
+    private func updatePressureMonitoring() {
+        guard enabledAlerts.contains(.memory) else {
+            pressureSource?.cancel(); pressureSource = nil; memoryPressure = false
+            return
+        }
+        guard pressureSource == nil else { return }
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.normal, .warning, .critical], queue: .main)
+        source.setEventHandler { [weak self, weak source] in
+            guard let self, let source else { return }
+            self.memoryPressure = !source.data.intersection([.warning, .critical]).isEmpty
+            self.evaluateAlerts()
+        }
+        pressureSource = source
+        source.resume()
     }
 
     var metricChoices: [(id: String, name: String, icon: String)] {
@@ -110,6 +199,7 @@ final class AppModel: ObservableObject {
                 if let cpu = sample.cpu { self.cpuHistory = Array((self.cpuHistory + [cpu]).suffix(30)) }
                 if let memory = sample.memoryFraction { self.memoryHistory = Array((self.memoryHistory + [memory]).suffix(30)) }
                 self.power.checkBattery(sample.battery)
+                self.evaluateAlerts()
                 self.reading = false
                 self.onMenuChange?()
             }

@@ -7,12 +7,14 @@ final class NotchController {
     private let model: AppModel
     let panel: NSPanel
     private(set) var expanded = false
+    private(set) var dashboardFrame = NSRect.zero
     private var dashboardHeight: CGFloat = 600
     private var observers: [NSObjectProtocol] = []
     private var localMonitor: Any?
     private var globalMonitor: Any?
     private var modelChanges: AnyCancellable?
     private var displayedMetrics: [String] = []
+    private var hostingView: NSHostingView<NotchContent>?
     var onExpand: (() -> Void)?
 
     init(model: AppModel) {
@@ -89,25 +91,34 @@ final class NotchController {
                                       leftArea: screen.auxiliaryTopLeftArea, rightArea: screen.auxiliaryTopRightArea,
                                       leftWidth: leftWidth, rightWidth: rightWidth)
         let cameraWidth = header.width - leftWidth - rightWidth
-        let cameraCenter = cameraWidth > 0 ? header.minX + leftWidth + cameraWidth / 2 : header.midX
-        let minX = expanded ? min(header.minX, cameraCenter - 160) : header.minX
-        let maxX = expanded ? max(header.maxX, cameraCenter + 160) : header.maxX
+        let dashboardCenter = header.midX
+        let minX = expanded ? min(header.minX, dashboardCenter - 160) : header.minX
+        let maxX = expanded ? max(header.maxX, dashboardCenter + 160) : header.maxX
         let contentHeight = min(dashboardHeight, min(600, max(120, header.minY - screen.visibleFrame.minY - 20)))
+        dashboardFrame = NSRect(x: dashboardCenter - 160, y: header.minY - contentHeight, width: 320, height: contentHeight)
         let width = maxX - minX
-        let host = NSHostingView(rootView: NotchContent(model: model, expanded: expanded, contentHeight: contentHeight,
+        let content = NotchContent(model: model, expanded: expanded, contentHeight: contentHeight,
                                                       headerHeight: header.height, cameraWidth: cameraWidth,
                                                       leftMetrics: leftMetrics, rightMetrics: rightMetrics,
                                                       leftWidth: leftWidth, rightWidth: rightWidth, panelWidth: width,
-                                                      headerOffset: header.minX - minX, dashboardOffset: cameraCenter - 160 - minX,
+                                                      headerOffset: header.minX - minX, dashboardOffset: dashboardFrame.minX - minX,
                                                       toggle: { [weak self] in self?.toggle() },
                                                       measured: { [weak self] height in
             DispatchQueue.main.async {
-                guard let self, self.expanded, abs(self.dashboardHeight - height) > 0.5 else { return }
-                self.dashboardHeight = height
+                guard let self, self.expanded,
+                      height.isFinite, abs(self.dashboardHeight - ceil(height)) > 0.5 else { return }
+                self.dashboardHeight = ceil(height)
                 self.update()
             }
-        }))
-        panel.contentView = host
+        })
+        if let hostingView {
+            hostingView.rootView = content
+        } else {
+            let host = NSHostingView(rootView: content)
+            host.sizingOptions = []
+            hostingView = host
+            panel.contentView = host
+        }
         let height = header.height + (expanded ? contentHeight : 0)
         panel.setFrame(NSRect(x: minX, y: header.maxY - height, width: width, height: height), display: true)
         panel.orderFrontRegardless()

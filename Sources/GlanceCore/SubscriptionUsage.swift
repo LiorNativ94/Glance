@@ -50,6 +50,12 @@ public struct SubscriptionUsage: Equatable, Sendable {
         self.plan = plan; self.windows = windows; self.updatedAt = updatedAt
     }
 
+    public func limitingWindow(now: Date = .now) -> UsageWindow? {
+        guard now.timeIntervalSince(updatedAt) < 600,
+              !windows.contains(where: { ($0.resetsAt ?? .distantFuture) <= now }) else { return nil }
+        return windows.min { $0.remainingFraction < $1.remainingFraction }
+    }
+
     /// Only numeric limits reported by the provider become meters; missing limits are never zero usage.
     public static func parse(_ data: Data, provider: SubscriptionProvider, plan: String? = nil,
                              now: Date = .now) throws -> SubscriptionUsage {

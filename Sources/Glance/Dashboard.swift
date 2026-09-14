@@ -6,19 +6,26 @@ struct Dashboard: View {
     @ObservedObject var power: PowerController
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Text("Show in").font(.system(size: 11)).foregroundStyle(.secondary)
-                Picker("Show in", selection: $model.showInNotch) {
-                    Text("Menu bar").tag(false)
-                    Text("Notch").tag(true)
-                }.labelsHidden().pickerStyle(.segmented).accessibilityIdentifier("display-mode")
-            }.padding(.bottom, 12)
+            if let message = power.message ?? model.settingsError {
+                HStack(alignment: .top, spacing: 8) {
+                    Text(message).font(.system(size: 11)).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button {
+                        power.message = nil; model.settingsError = nil
+                    } label: { Image(systemName: "xmark") }
+                        .buttonStyle(.plain).accessibilityLabel("Dismiss message")
+                }.padding(10).background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                    .padding(.bottom, 12).accessibilityIdentifier("dashboard-message")
+            }
             switch model.page {
             case .overview: overview
             case .customize: customization
             case .settings: settings
             case .lidSetup: lidSetup
             case .subscriptions: subscriptionSettings
+            case .dashboardLayout: dashboardLayout
+            case .alerts: alertSettings
+            case .alertDetail: alertDetail
             }
         }
         .frame(width: 292)
@@ -26,10 +33,6 @@ struct Dashboard: View {
         .fixedSize(horizontal: false, vertical: true)
         .background(.regularMaterial)
         .tint(.blue)
-        .alert("Glance", isPresented: Binding(get: { power.message != nil || model.settingsError != nil },
-                                               set: { if !$0 { power.message = nil; model.settingsError = nil } })) {
-            Button("OK") { power.message = nil; model.settingsError = nil }
-        } message: { Text(power.message ?? model.settingsError ?? "") }
     }
     private var overview: some View {
         VStack(spacing: 0) {
@@ -39,11 +42,49 @@ struct Dashboard: View {
                 Circle().fill(.green).frame(width: 6, height: 6)
                 Text("Live").font(.system(size: 10)).foregroundStyle(.secondary)
             }.padding(.bottom, 10)
+            ForEach(model.visibleSections) { section in
+                dashboardSection(section)
+                line
+            }
+            if model.visibleSections.isEmpty {
+                Text("Choose what appears here in Customize dashboard.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary).padding(.vertical, 12)
+            }
+            Button { model.page = .customize } label: {
+                HStack(spacing: 8) {
+                    symbol("slider.horizontal.3"); Text("Customize…").font(.system(size: 11))
+                    Spacer(); Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("customize-menu-bar")
+            line
+            HStack {
+                Button { model.page = .settings } label: { Label("Settings…", systemImage: "gearshape") }
+                Spacer()
+                Button("Activity Monitor") {
+                    NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app"))
+                }
+            }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(.secondary)
+        }
+    }
+    @ViewBuilder private func dashboardSection(_ section: DashboardSection) -> some View {
+        switch section {
+        case .system: systemSection
+        case .storage: storageSection
+        case .battery: batterySection
+        case .awake: awakeSection
+        case .subscriptions: subscriptionSection
+        }
+    }
+    private var systemSection: some View {
+        VStack(spacing: 0) {
             metricRow("CPU", icon: "cpu", value: ReadingFormat.percent(model.snapshot.cpu), history: model.cpuHistory)
             metricRow("Memory", icon: "memorychip",
                       value: ReadingFormat.memory(model.snapshot.memoryUsed, total: model.snapshot.memoryTotal),
                       history: model.memoryHistory)
-            line
+        }
+    }
+    private var storageSection: some View {
+        VStack(spacing: 0) {
             HStack { Text("Storage").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary); Spacer() }
                 .padding(.bottom, 9)
             ScrollView {
@@ -53,8 +94,11 @@ struct Dashboard: View {
                 }
             }.scrollIndicators(.hidden)
                 .frame(height: CGFloat(max(1, min(model.snapshot.volumes.count, 3))) * 47 - 3)
+        }
+    }
+    private var batterySection: some View {
+        VStack(spacing: 0) {
             if let battery = model.snapshot.battery {
-                line
                 HStack(spacing: 8) {
                     symbol("battery.100")
                     Text("Battery")
@@ -62,7 +106,10 @@ struct Dashboard: View {
                     Text("\(ReadingFormat.percent(battery.fraction)) · \(battery.detail)").foregroundStyle(.secondary)
                 }.font(.system(size: 11))
             }
-            line
+        }
+    }
+    private var awakeSection: some View {
+        VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 8) {
                 symbol("cup.and.saucer").padding(.top, 3)
                 VStack(alignment: .leading, spacing: 4) {
@@ -78,10 +125,62 @@ struct Dashboard: View {
                 Picker("Duration", selection: Binding(get: { power.duration }, set: power.selectDuration)) {
                     Text("30m").tag(30); Text("1h").tag(60); Text("2h").tag(120); Text("Until off").tag(0)
                 }.pickerStyle(.segmented).padding(.top, 12).padding(.leading, 28)
+                if power.deadline != nil {
+                    HStack(spacing: 8) {
+                        Button("+15m") { power.extendSession(by: 15) }.accessibilityIdentifier("extend-awake-15")
+                        Button("+30m") { power.extendSession(by: 30) }.accessibilityIdentifier("extend-awake-30")
+                        Spacer()
+                        Button("Stop") { power.stop() }
+                    }.font(.system(size: 11)).padding(.top, 10).padding(.leading, 28)
+                }
                 Toggle("Keep display on", isOn: Binding(get: { power.displayOn }, set: power.setDisplay))
                     .toggleStyle(.checkbox).font(.system(size: 11)).padding(.top, 10)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 28)
             }
+            if power.lidActive || power.lidStopping || power.authorizing { lidControl }
+        }
+    }
+    private var subscriptionSection: some View {
+        VStack(spacing: 0) {
+            Button { model.page = .subscriptions } label: {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label("AI subscriptions", systemImage: "sparkles").font(.system(size: 11, weight: .medium))
+                        Spacer()
+                        Image(systemName: "chevron.right").font(.system(size: 10)).foregroundStyle(.secondary)
+                    }
+                    if model.subscriptions.enabled.isEmpty {
+                        Text("Add Claude or Codex usage").font(.system(size: 10)).foregroundStyle(.secondary)
+                    } else {
+                        TimelineView(.periodic(from: .now, by: 60)) { context in
+                            VStack(alignment: .leading, spacing: 10) {
+                                ForEach(SubscriptionProvider.allCases.filter { model.subscriptions.enabled.contains($0) }) { provider in
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        HStack {
+                                            MetricIcon(name: "\(provider.rawValue)-usage").frame(width: 12, height: 12)
+                                            Text(provider.name)
+                                            Spacer()
+                                            if let window = model.subscriptions.states[provider]?.usage?.limitingWindow(now: context.date) {
+                                                Text("\(ReadingFormat.percent(window.remainingFraction)) left").monospacedDigit()
+                                            } else {
+                                                Text(model.subscriptions.states[provider]?.refreshing == true ? "Refreshing…" : "Open for details")
+                                            }
+                                        }
+                                        if let window = model.subscriptions.states[provider]?.usage?.limitingWindow(now: context.date) {
+                                            Text("\(window.title) · \(window.resetDescription(now: context.date))")
+                                                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                                        }
+                                    }.font(.system(size: 10))
+                                }
+                            }
+                        }
+                    }
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("subscriptions")
+        }
+    }
+    private var lidControl: some View {
+        VStack(spacing: 0) {
             HStack(spacing: 8) {
                 symbol("laptopcomputer")
                 VStack(alignment: .leading, spacing: 3) {
@@ -96,52 +195,23 @@ struct Dashboard: View {
                     Button("Set up") { model.page = .lidSetup }.disabled(power.authorizing || power.lidStopping)
                 }
             }.padding(.top, 12)
-            line
-            Button { model.page = .subscriptions } label: {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Label("AI subscriptions", systemImage: "sparkles").font(.system(size: 11, weight: .medium))
-                        Spacer()
-                        Image(systemName: "chevron.right").font(.system(size: 10)).foregroundStyle(.secondary)
-                    }
-                    if model.subscriptions.enabled.isEmpty {
-                        Text("Add Claude or Codex usage").font(.system(size: 10)).foregroundStyle(.secondary)
-                    } else {
-                        ForEach(SubscriptionProvider.allCases.filter { model.subscriptions.enabled.contains($0) }) { provider in
-                            HStack {
-                                MetricIcon(name: "\(provider.rawValue)-usage").frame(width: 12, height: 12)
-                                Text(provider.name)
-                                Spacer()
-                                if let remaining = model.subscriptions.remaining(provider) {
-                                    Text("\(ReadingFormat.percent(remaining)) left")
-                                } else {
-                                    Text(model.subscriptions.states[provider]?.refreshing == true ? "Refreshing…" : "Open for details")
-                                }
-                            }.font(.system(size: 10)).foregroundStyle(.secondary)
-                        }
-                    }
-                }.contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityIdentifier("subscriptions")
-            line
-            Button { model.page = .customize } label: {
-                HStack(spacing: 8) {
-                    symbol("slider.horizontal.3"); Text("Icons…").font(.system(size: 11))
-                    Spacer(); Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
-                }.contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityIdentifier("customize-menu-bar")
-            line
-            HStack {
-                Button { model.page = .settings } label: { Label("Settings…", systemImage: "gearshape") }
-                Spacer()
-                Button("Activity Monitor") {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app"))
-                }
-            }.buttonStyle(.plain).font(.system(size: 10)).foregroundStyle(.secondary)
         }
+    }
+    private var displayMode: some View {
+        HStack(spacing: 10) {
+            Text("Show in").font(.system(size: 11)).foregroundStyle(.secondary)
+            Picker("Show in", selection: $model.showInNotch) {
+                Text("Menu bar").tag(false)
+                Text("Notch").tag(true)
+            }.labelsHidden().pickerStyle(.segmented).accessibilityIdentifier("display-mode")
+        }.padding(.bottom, 12)
     }
     private var customization: some View {
         VStack(alignment: .leading, spacing: 12) {
-            pageHeader("Customize icons")
+            pageHeader("Customize")
+            displayMode
+            Button("Customize dashboard…") { model.page = .dashboardLayout }
+                .accessibilityIdentifier("customize-dashboard")
             Text("Choose the icons shown in the menu bar or notch.")
                 .font(.system(size: 10)).foregroundStyle(.secondary)
             ScrollView {
@@ -194,11 +264,14 @@ struct Dashboard: View {
                     Text("Your Mac, at a glance.").font(.system(size: 10)).foregroundStyle(.secondary)
                 }
             }
+            displayMode
             Toggle("Open Glance at login", isOn: Binding(get: { model.launchAtLogin }, set: model.setLogin))
                 .toggleStyle(.checkbox)
-            Text("Choose Menu bar or Notch above. Notch mode sits beside the camera; click it to open Glance. Displays without a notch use the center of the menu-bar row.")
+            Text("Notch mode sits beside the camera, or at the center of displays without a notch.")
                 .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Button("Claude & Codex subscriptions…") { model.page = .subscriptions }
+            Button("Alerts…") { model.page = .alerts }.accessibilityIdentifier("alert-settings")
+            lidControl
             Text("Readings update every 2 seconds. Storage refreshes every 15 seconds and when drives connect or disconnect.")
                 .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Text("Keep-awake stops at 10% battery. Lid-closed mode is temporary and needs authorization for each session.")
@@ -212,6 +285,95 @@ struct Dashboard: View {
             }
         }
     }
+    private var dashboardLayout: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            pageHeader("Customize dashboard")
+            Text("Show the sections you use, in your preferred order.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+            ForEach(model.sectionOrder) { section in
+                HStack(spacing: 8) {
+                    Toggle(section.title, isOn: Binding(get: { !model.hiddenSections.contains(section) }, set: { shown in
+                        if shown { model.hiddenSections.remove(section) } else { model.hiddenSections.insert(section) }
+                    })).toggleStyle(.checkbox).font(.system(size: 11))
+                        .accessibilityIdentifier("section-\(section.rawValue)")
+                    Spacer()
+                    Button { model.moveSection(section, by: -1) } label: { Image(systemName: "chevron.up") }
+                        .disabled(model.sectionOrder.first == section).accessibilityLabel("Move \(section.title) up")
+                        .accessibilityIdentifier("move-up-\(section.rawValue)")
+                    Button { model.moveSection(section, by: 1) } label: { Image(systemName: "chevron.down") }
+                        .disabled(model.sectionOrder.last == section).accessibilityLabel("Move \(section.title) down")
+                        .accessibilityIdentifier("move-down-\(section.rawValue)")
+                }
+            }
+            Text("Active keep-awake sessions stay visible. Icon choices are separate.")
+                .font(.system(size: 10)).foregroundStyle(.secondary)
+            HStack {
+                Button("Restore defaults") { model.sectionOrder = DashboardSection.allCases; model.hiddenSections = [] }
+                Spacer()
+                Button("Done") { model.page = .overview }.buttonStyle(.borderedProminent)
+            }
+        }
+    }
+    private var alertSettings: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            pageHeader("Alerts")
+            Text("Optional notifications, once per condition while Glance is running. No sounds.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+            ForEach(AlertKind.allCases) { kind in
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack {
+                        Text(kind.title).font(.system(size: 12, weight: .medium))
+                        Spacer()
+                        Toggle(kind.title, isOn: Binding(get: { model.enabledAlerts.contains(kind) },
+                                                        set: { model.setAlertEnabled(kind, $0) }))
+                            .labelsHidden().toggleStyle(.switch).controlSize(.small).disabled(model.pendingAlerts.contains(kind))
+                            .accessibilityIdentifier("alert-\(kind.rawValue)")
+                    }
+                    switch kind {
+                    case .ai:
+                        Stepper("At or below \(model.alertThresholds.aiRemainingPercent)% remaining", value: Binding(
+                            get: { model.alertThresholds.aiRemainingPercent }, set: { model.updateAlertThresholds(ai: $0) }), in: 1...100)
+                            .font(.system(size: 11)).accessibilityIdentifier("alert-ai-threshold")
+                        Text("Applies to Claude and Codex. For example, 20% remaining means 80% used.")
+                            .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    case .memory:
+                        Text("When macOS reports elevated pressure for one minute. This measures pressure, not a percentage of RAM used.")
+                            .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    case .storage:
+                        Stepper("Below \(model.alertThresholds.storageFreePercent)% free", value: Binding(
+                            get: { model.alertThresholds.storageFreePercent }, set: { model.updateAlertThresholds(storagePercent: $0) }), in: 1...100)
+                            .font(.system(size: 11)).accessibilityIdentifier("alert-storage-percent")
+                        Stepper("And below \(model.alertThresholds.storageFreeGB) GB free", value: Binding(
+                            get: { model.alertThresholds.storageFreeGB }, set: { model.updateAlertThresholds(storageGB: $0) }), in: 1...1000)
+                            .font(.system(size: 11)).accessibilityIdentifier("alert-storage-gb")
+                    }
+                }
+            }
+            Text("AI alerts use fresh provider readings, refreshed every 5 minutes. Stale or unavailable readings never trigger an alert.")
+                .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Button("Notification settings…") {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!)
+            }.font(.system(size: 11))
+        }
+    }
+    private var alertDetail: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            pageHeader(model.alertToReview?.kind.title ?? "Alert")
+            if let alert = model.alertToReview {
+                Text("Earlier alert: \(alert.body)").font(.system(size: 11)).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Current readings").font(.system(size: 12, weight: .medium))
+                if alert.kind == .memory {
+                    systemSection
+                    Text(model.memoryPressure ? "Memory pressure is elevated" : "No elevated memory pressure reported")
+                        .font(.system(size: 11))
+                    Button("Open Activity Monitor") {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app"))
+                    }
+                } else { storageSection }
+            }
+        }
+    }
     private var subscriptionSettings: some View {
         VStack(alignment: .leading, spacing: 12) {
             pageHeader("AI subscriptions")
@@ -220,7 +382,7 @@ struct Dashboard: View {
             ScrollView {
                 SubscriptionCards(store: model.subscriptions)
             }.scrollIndicators(.hidden).frame(height: 380)
-            Text("Updates every 5 minutes. Menu bar percentages show the lowest remaining limit. Add them in Icons…")
+            Text("Updates every 5 minutes. Menu bar percentages show the lowest remaining limit. Add them in Customize…")
                 .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }

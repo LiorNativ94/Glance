@@ -5,35 +5,55 @@ Glance is a lightweight native macOS utility with a compact dashboard, customiza
 Built with Swift, AppKit, and SwiftUI, with no third-party package dependencies or telemetry.
 System readings stay local; optional Claude and Codex subscription connections fetch usage directly from their providers.
 
-**[Download Glance v1.1 for macOS](https://github.com/LiorNativ94/Glance/releases/download/v1.1/Glance-1.1-universal.dmg)** · [All releases](https://github.com/LiorNativ94/Glance/releases)
+**[Download Glance v1.2 for macOS](https://github.com/LiorNativ94/Glance/releases/download/v1.2/Glance-1.2-universal.dmg)** · [All releases](https://github.com/LiorNativ94/Glance/releases)
 
 ## Features
 
-- **Menu bar or notch:** switch locations directly from the dropdown; only your chosen location is shown.
+- **Menu bar or notch:** switch locations in Customize or Settings; only your chosen location is shown.
 - **Compact notch:** selected icons sit beside the camera, within the menu-bar row, without covering browser tabs.
   Its width adjusts to your selection, and the Glance logo appears only when no selected metrics are available.
-- **Shared icon selection:** choose CPU, memory, battery, drives, and subscription limits in **Icons…**.
+- **Shared icon selection:** choose CPU, memory, battery, drives, and subscription limits in **Customize…**.
   The same selection applies to both display modes and persists across launches.
 - **Claude and Codex usage:** reuse existing CLI sign-ins to see reported plan names, usage windows, and reset countdowns, with Claude and ChatGPT logos.
 - **System monitoring:** CPU and memory history graphs, battery status, and used/free space for local drives.
-- **Keep awake:** timed or untimed sessions, an optional display sleep override, and separately authorized temporary closed-lid mode.
+- **Dashboard layout:** reorder or hide CPU and memory, storage, battery, keep awake, and AI subscription sections independently of icon choices.
+- **Quiet alerts:** optional notifications for low AI allowance, sustained memory pressure, and low disk space.
+- **Keep awake:** timed or untimed sessions, +15m / +30m extensions, an optional display sleep override, and separately authorized temporary closed-lid mode.
 - **Launch at login:** optional, with no Dock icon.
+
+## New in v1.2
+
+- Show the limiting AI usage window and reset countdown directly in the dashboard.
+- Choose alert thresholds for AI allowance and free disk space.
+- Reorder or hide dashboard sections independently of menu bar icons.
+- Extend timed keep-awake sessions by 15 or 30 minutes.
+- Keep Alerts stable in notch mode, show permission errors inline, and center the dropdown for odd and even icon counts.
 
 ## Screenshots
 
-These screenshots show the original v1.0 interface with sample readings and generic drive names.
-Version 1.1 adds the **Show in** picker, **Icons…** controls, and **AI subscriptions** described below.
+Screenshots show v1.2 with sample readings, example subscription limits, and generic drive names.
 
 <table>
   <tr>
     <th>Overview</th>
-    <th>Customize menu bar</th>
+    <th>Alerts and thresholds</th>
     <th>Keep awake</th>
   </tr>
   <tr>
     <td valign="top"><img src="docs/screenshots/overview.png" width="280" alt="Glance overview showing CPU and memory graphs, storage usage, and battery level"></td>
-    <td valign="top"><img src="docs/screenshots/customize.png" width="280" alt="Menu bar customization with selectable metrics and a live preview"></td>
-    <td valign="top"><img src="docs/screenshots/keep-awake.png" width="280" alt="An active one-hour keep-awake session with duration and display controls"></td>
+    <td valign="top"><img src="docs/screenshots/alerts.png" width="280" alt="Optional alerts with configurable AI allowance and disk-space thresholds"></td>
+    <td valign="top"><img src="docs/screenshots/keep-awake.png" width="280" alt="An active keep-awake session with quick time extensions and display controls"></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <th>Dashboard layout</th>
+    <th>Customize icons</th>
+  </tr>
+  <tr>
+    <td valign="top"><img src="docs/screenshots/dashboard-layout.png" width="280" alt="Dashboard section visibility and ordering controls"></td>
+    <td valign="top"><img src="docs/screenshots/customize.png" width="280" alt="Menu bar and notch icon selection with a live preview"></td>
   </tr>
 </table>
 
@@ -44,13 +64,13 @@ Version 1.1 adds the **Show in** picker, **Icons…** controls, and **AI subscri
 
 ## Install
 
-1. Download the [v1.1 DMG](https://github.com/LiorNativ94/Glance/releases/download/v1.1/Glance-1.1-universal.dmg).
+1. Download the [v1.2 DMG](https://github.com/LiorNativ94/Glance/releases/download/v1.2/Glance-1.2-universal.dmg).
 2. Open the DMG and drag Glance into Applications, quitting any existing copy first.
 3. Open Glance from Applications.
    New installs start in the menu bar; existing installs restore the saved Menu bar or Notch choice.
 
 No Xcode or Swift installation is needed to use the downloaded app.
-The version at the bottom of **Settings…** matches the shipped app version: `1.1` for this release.
+The version at the bottom of **Settings…** matches the shipped app version: `1.2` for this release.
 Open the installed copy before enabling launch at login.
 
 Release builds use ad hoc signing and are not notarized, so macOS may block the first launch.
@@ -62,9 +82,9 @@ Each [GitHub Release](https://github.com/LiorNativ94/Glance/releases) includes a
 ### Quick start
 
 1. Click Glance in the menu bar or beside the camera to open the dashboard.
-2. Use **Show in → Menu bar / Notch** at the top to choose where Glance appears.
-3. Open **Icons…** and select the metrics you want in that location.
-4. To add subscription limits, connect a provider in **AI subscriptions**, then select **Claude remaining** or **Codex remaining** in **Icons…**.
+2. Open **Customize… → Show in → Menu bar / Notch** to choose where Glance appears.
+3. Open **Customize…** and select the metrics you want in that location.
+4. To add subscription limits, connect a provider in **AI subscriptions**, then select **Claude remaining** or **Codex remaining** in **Customize…**.
 
 Connecting a provider and displaying its icon are separate choices.
 Connected providers remain available in the dashboard even when their icons are unchecked.
@@ -73,21 +93,52 @@ If no selected metrics are available, a small Glance button keeps the dashboard 
 
 Enable **Keep awake** for a 30-minute, one-hour, two-hour, or untimed session.
 The optional **Keep display on** setting applies only while a session is active.
-The menu bar cup indicator is optional and disabled by default; it is configured with **Show keep-awake icon** in **Icons…**.
+The menu bar cup indicator is optional and disabled by default; it is configured with **Show keep-awake icon** in **Customize…**.
 
-Open **Settings…** to configure launch at login or quit the app.
+Open **Settings…** to configure launch at login, alerts, lid-closed mode, or quit the app.
+
+### Dashboard layout and alerts
+
+Open **Customize… → Customize dashboard…** to hide sections or move them up and down.
+The order and visibility persist across launches and apply to both display modes.
+Icon selections remain independent.
+An active keep-awake session stays visible so its controls remain accessible.
+Use **Restore defaults** to show all sections in their original order.
+
+AI summaries show the percentage remaining, the most constrained reported window, and its reset countdown together.
+Stale or expired readings offer details rather than presenting an outdated allowance as current.
+
+Alerts are off by default.
+Enable individual rules in **Settings… → Alerts…**; macOS asks for notification permission on first use.
+If permission was previously denied, open **Notification settings…**, turn on **Allow notifications** for Glance, then enable the rule again.
+Use the arrow controls in Alerts to choose the AI percentage remaining and the disk-space percentage and GB thresholds.
+These settings save automatically and do not enable alerts by themselves.
+Defaults are AI allowance at or below 20% remaining, macOS memory pressure elevated for at least one minute, or a drive with less than both 5% and 10 GB free.
+The AI threshold applies to both Claude and Codex; remaining is the opposite of used (20% remaining means 80% used).
+Memory pressure follows the macOS pressure signal, not RAM usage percentage.
+Permission errors appear inside the active dashboard rather than in another window.
+AI alerts use fresh provider readings, so they follow the existing five-minute refresh interval.
+Repeated readings do not repeat an alert until the condition recovers or an AI window changes; this episode tracking lasts while Glance is running.
+Click an alert to open subscription details or the current memory/storage readings, even if that section is hidden.
+Disabled alerts do not request notification access, and the memory-pressure listener runs only when its alert is enabled.
+
+During a timed keep-awake session, **+15m** and **+30m** add to the existing deadline without restarting the session.
+Extensions are hidden for **Until off** sessions.
+Choosing a duration preset still starts that duration from now.
+Use **Stop** or the keep-awake switch to end the session.
 
 ### Notch
 
-Choose **Show in → Notch** at the top of the dropdown.
-Compact wings beside the camera show only the available metrics selected in **Icons…**, in the same order as the menu bar.
+Choose **Customize… → Show in → Notch**, or use the same picker in **Settings…**.
+Compact wings beside the camera show only the available metrics selected in **Customize…**, in the same order as the menu bar.
 Connecting a subscription makes it available to select; it does not automatically add its icon.
 The wings shrink to fit the selected metrics, with no extra Glance logo unless no selected metrics are available.
 Percentage cells keep a stable width as readings change, so the notch resizes when you change icons rather than on every update.
 The collapsed view stays entirely within the menu-bar row, leaving browser tabs and application content clear.
 Click it to open the dashboard; click its header, press Escape, or click outside to collapse it.
+The dropdown is centered under the entire icon strip for odd and even selections, while the camera gap stays clear.
 Notch mode hides Glance’s menu bar item; choosing **Show in → Menu bar** restores it and hides the notch view.
-The same picker appears in both dropdowns, and switching moves the open dashboard to the selected location.
+The picker is available in Customize and Settings in both display modes, and switching moves the open page to the selected location.
 Glance uses a notched display when connected, otherwise the center of the main display’s menu-bar row.
 The panel follows display changes and is available across Spaces.
 
@@ -98,7 +149,7 @@ Enable either provider to reuse its existing local sign-in.
 The cards show reported plan names, session and weekly usage, and reset countdowns when those values are available.
 The meters show **percent used**; the selected menu bar and notch icons show **percent remaining** for the most constrained reported limit.
 Claude also shows Sonnet and Opus weekly windows when returned by the provider.
-In **Icons…**, select **Claude remaining** or **Codex remaining** to add that provider to the menu bar or notch.
+In **Customize…**, select **Claude remaining** or **Codex remaining** to add that provider to the menu bar or notch.
 For example, a provider with 70% session usage and 40% weekly usage displays **30% remaining**.
 
 - **Codex:** sign in with `codex login` using your ChatGPT subscription.
@@ -122,10 +173,11 @@ This integration follows [CodexBar’s Codex](https://github.com/steipete/CodexB
 
 | What you see | What to do |
 | --- | --- |
-| A connected provider is missing from the notch or menu bar | Select **Claude remaining** or **Codex remaining** in **Icons…**. |
-| An unwanted provider icon is visible | Uncheck it in **Icons…**; you can keep the provider connected for its dashboard card. |
-| The menu bar item disappeared | Notch mode hides it; open the notch dropdown and choose **Show in → Menu bar** to restore it. |
+| A connected provider is missing from the notch or menu bar | Select **Claude remaining** or **Codex remaining** in **Customize…**. |
+| An unwanted provider icon is visible | Uncheck it in **Customize…**; you can keep the provider connected for its dashboard card. |
+| The menu bar item disappeared | Notch mode hides it; open the notch dropdown and choose **Customize… → Show in → Menu bar** to restore it. |
 | A subscription shows `—` or asks you to sign in | Check its card in **AI subscriptions**, renew the CLI sign-in if requested, then click **Refresh**. |
+| An alert switch stays off or says notifications are not allowed | Open **Settings… → Alerts… → Notification settings…**, allow Glance notifications in macOS, and try the switch again. |
 | Refresh is waiting after too many requests | Allow the provider’s cooldown to expire; repeated clicks do not bypass it. |
 
 ## How readings work
@@ -176,7 +228,7 @@ swift test
 codesign --verify --deep --strict dist/Glance.app
 ```
 
-Tests cover reading calculations, metric selections, sleep-session policy, the rendered Settings version, and visible popover positioning during menu bar customization.
+Tests cover reading calculations, metric selections, dashboard persistence, alert thresholds and repeat suppression, permission denial, timer extensions, sleep-session policy, the rendered Settings version, and visible popover positioning during menu bar customization.
 Subscription tests cover provider response formats, account-scoped requests, missing and expired credentials, cooldowns, and disconnecting during a refresh.
 Native notch tests verify camera clearance, selection-based sizing, exclusive display modes, expansion, dismissal, and synthetic subscription readings.
 The AppKit tests open a temporary menu bar item and popover, so run them in a logged-in macOS desktop session.
@@ -223,26 +275,26 @@ Use `build.sh` to assemble the complete app bundle, including the helper and ico
 After committing and pushing your changes, publish a new version by pushing a new tag:
 
 ```sh
-git tag v1.1.1
-git push origin v1.1.1
+git tag v1.2.1
+git push origin v1.2.1
 ```
 
-Use a new `vMAJOR.MINOR` or `vMAJOR.MINOR.PATCH` tag for each version, such as `v1.1.1` or `v1.2`.
+Use a new `vMAJOR.MINOR` or `vMAJOR.MINOR.PATCH` tag for each version, such as `v1.2.1` or `v1.3`.
 Prerelease suffixes such as `-beta.1` are not supported.
 The **Release DMG** GitHub Actions workflow tests the tagged code, builds both architectures, stamps the app version from the tag, verifies the signatures and DMG, and publishes a GitHub Release with the DMG and its SHA-256 checksum.
 The version at the bottom of Settings reads that same bundled version automatically.
 The rendered Settings version and popover alignment tests require an interactive desktop and run locally rather than in release CI.
 No repository secrets are required; the workflow uses GitHub's built-in token with `contents: write` permission.
 Repository or organization policy must allow GitHub Actions and that permission.
-To build an existing tag manually, open **Actions → Release DMG → Run workflow** on `main` and enter the tag, such as `v1.1`.
+To build an existing tag manually, open **Actions → Release DMG → Run workflow** on `main` and enter the tag, such as `v1.2`.
 
 To build the same DMG locally with Xcode installed:
 
 ```sh
-./package-dmg.sh v1.1
+./package-dmg.sh v1.2
 ```
 
-The output is `dist/Glance-1.1-universal.dmg` and its `.sha256` checksum file.
+The output is `dist/Glance-1.2-universal.dmg` and its `.sha256` checksum file.
 
 ## Project layout
 
@@ -262,7 +314,7 @@ The output is `dist/Glance-1.1-universal.dmg` and its `.sha256` checksum file.
 
 Glance processes system readings locally.
 Metric selections and the optional cup indicator are stored in macOS user defaults, outside the repository.
-Notch visibility and enabled subscription providers are also stored in user defaults.
+Notch visibility, dashboard layout, alert thresholds, enabled alert rules, and enabled subscription providers are also stored in user defaults.
 Subscription connections are off by default and read local credentials only for enabled providers.
 Access tokens are sent only to the corresponding provider’s fixed HTTPS usage endpoint; redirects are refused.
 Glance stores no copies of credentials or usage readings on disk, and background Keychain reads never prompt.

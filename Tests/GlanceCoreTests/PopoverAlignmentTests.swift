@@ -5,6 +5,118 @@ import GlanceCore
 @testable import Glance
 
 final class PopoverAlignmentTests: XCTestCase {
+    func testNotchDropdownIsCenteredUnderHeaderForOddAndEvenIconCounts() throws {
+        _ = NSApplication.shared
+        let suite = "Glance.NotchCenterTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "showInNotch")
+        defaults.set(["claude", "codex"], forKey: "subscriptionProviders")
+        let model = AppModel(defaults: defaults, subscriptions: SubscriptionStore(defaults: defaults, startPolling: false))
+        let notch = NotchController(model: model)
+        defer { notch.collapse(); notch.panel.orderOut(nil) }
+        for selection in [["cpu", "memory", "codex"], ["cpu", "memory"], ["codex"], ["cpu", "memory", "codex", "claude"], []] {
+            model.selected = selection
+            notch.collapse()
+            settleLayout()
+            let headerFrame = notch.panel.frame
+            notch.expand()
+            settleLayout()
+            XCTAssertEqual(notch.dashboardFrame.midX, headerFrame.midX, accuracy: 1,
+                           "Dropdown must be centered under the whole header for \(selection.count) icons")
+        }
+    }
+    func testNotchKeepsItsHostingViewWhenOpeningAlertsAndResizing() throws {
+        _ = NSApplication.shared
+        let suite = "Glance.NotchAlertHostTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "showInNotch")
+        let model = AppModel(defaults: defaults, subscriptions: SubscriptionStore(defaults: defaults, startPolling: false))
+        let notch = NotchController(model: model)
+        defer { notch.collapse(); notch.panel.orderOut(nil) }
+        notch.expand()
+        let host = try XCTUnwrap(notch.panel.contentView)
+        model.page = .alerts
+        notch.update()
+        XCTAssertTrue(notch.panel.contentView === host, "Resizing Alerts must not recreate its hosting view and restart its layout callbacks")
+    }
+    func testDeniedPermissionStaysInsideTheNotchWithoutOpeningAnotherWindow() throws {
+        _ = NSApplication.shared
+        let suite = "Glance.NotchPermissionTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: "showInNotch")
+        let model = AppModel(defaults: defaults, subscriptions: SubscriptionStore(defaults: defaults, startPolling: false))
+        let delegate = AppDelegate()
+        delegate.configureMenuBar(model: model)
+        let notch = try XCTUnwrap(delegate.notch)
+        defer {
+            model.settingsError = nil
+            notch.collapse(); notch.panel.orderOut(nil)
+            delegate.popover.close()
+            NSStatusBar.system.removeStatusItem(delegate.statusItem)
+        }
+        notch.expand()
+        model.page = .settings
+        settleLayout()
+        model.page = .alerts
+        settleLayout()
+        let existingWindows = Set(NSApp.windows.filter(\.isVisible).map(ObjectIdentifier.init))
+        let host = try XCTUnwrap(notch.panel.contentView)
+        let top = notch.panel.frame.maxY
+        model.authorizeAlerts = { $0(false, nil) }
+        model.setAlertEnabled(.ai, true)
+        settleLayout()
+        XCTAssertFalse(model.enabledAlerts.contains(.ai))
+        XCTAssertNotNil(model.settingsError)
+        XCTAssertTrue(notch.panel.contentView === host)
+        XCTAssertTrue(notch.expanded)
+        XCTAssertFalse(delegate.popover.isShown)
+        XCTAssertEqual(notch.panel.frame.maxY, top, accuracy: 1)
+        XCTAssertTrue(NSApp.windows.filter { $0.isVisible && !existingWindows.contains(ObjectIdentifier($0)) }.isEmpty,
+                      "Permission errors must stay in the active dashboard instead of opening a stray window")
+        let settledFrame = notch.panel.frame
+        settleLayout()
+        XCTAssertEqual(notch.panel.frame, settledFrame, "Alerts layout must settle rather than repeatedly resize")
+        let bitmap = try XCTUnwrap(host.bitmapImageRepForCachingDisplay(in: host.bounds))
+        host.cacheDisplay(in: host.bounds, to: bitmap)
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        try VNImageRequestHandler(cgImage: XCTUnwrap(bitmap.cgImage)).perform([request])
+        let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ")
+        XCTAssertTrue(text.contains("Allow Glance notifications"), text)
+        XCTAssertTrue(text.contains("remaining"), text)
+    }
+    func testAlertsOpenTheirDetailsInEitherDisplayModeWithoutChangingHiddenSections() throws {
+        _ = NSApplication.shared
+        let suite = "Glance.AlertNavigationTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = AppModel(defaults: defaults, subscriptions: SubscriptionStore(defaults: defaults, startPolling: false))
+        model.hiddenSections = Set(DashboardSection.allCases)
+        let delegate = AppDelegate()
+        delegate.configureMenuBar(model: model)
+        defer {
+            delegate.popover.close()
+            delegate.notch?.panel.orderOut(nil)
+            NSStatusBar.system.removeStatusItem(delegate.statusItem)
+        }
+        for notch in [false, true] {
+            model.showInNotch = notch
+            settleLayout()
+            for kind in AlertKind.allCases {
+                let alert = GlanceAlert(id: kind.rawValue, kind: kind, title: kind.title, body: "Test condition")
+                delegate.reviewAlert(alert)
+                settleLayout()
+                XCTAssertEqual(model.page, kind == .ai ? .subscriptions : .alertDetail)
+                XCTAssertEqual(model.alertToReview, alert)
+                XCTAssertEqual(model.hiddenSections, Set(DashboardSection.allCases))
+                XCTAssertEqual(delegate.popover.isShown, !notch)
+                XCTAssertEqual(delegate.notch?.expanded, notch)
+            }
+        }
+    }
     func testNotchUsesOnlySelectedMetricsAndShrinksWithSelection() throws {
         _ = NSApplication.shared
         let suite = "Glance.NotchSelectionTests.\(UUID())"

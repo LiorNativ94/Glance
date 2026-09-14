@@ -31,12 +31,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let popoverAnchor = PopoverAnchorView()
     private var lastWidth: CGFloat = 0
     private(set) var notch: NotchController?
+    private var alerts: AlertNotifications?
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Reopening Glance should reveal the existing instance rather than duplicate menu items.
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "com.liornativ.Glance")
             .filter { $0.processIdentifier != getpid() }
         if let existing = others.first { existing.activate(); NSApp.terminate(nil); return }
         configureMenuBar(model: AppModel())
+        alerts = AlertNotifications(model: model)
+        alerts?.openAlert = { [weak self] alert in self?.reviewAlert(alert) }
         if CommandLine.arguments.contains("--show") { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.showDashboard() } }
     }
     func configureMenuBar(model: AppModel) {
@@ -99,6 +102,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
     private func showDashboard() {
         if model.showInNotch { notch?.expand() } else { showPopover() }
+    }
+    func reviewAlert(_ alert: GlanceAlert) {
+        model.alertToReview = alert
+        model.page = alert.kind == .ai ? .subscriptions : .alertDetail
+        if model.showInNotch { notch?.expand(resetPage: false) }
+        else { showPopover(resetPage: false) }
     }
     private func showPopover(resetPage: Bool = true) {
         guard !model.showInNotch else { return }

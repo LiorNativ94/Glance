@@ -197,9 +197,6 @@ final class SubscriptionStore: ObservableObject {
     }
 
     func remaining(_ provider: SubscriptionProvider) -> Double? {
-        guard let usage = states[provider]?.usage, Date().timeIntervalSince(usage.updatedAt) < 600 else { return nil }
-        let windows = usage.windows
-        guard !windows.isEmpty, !windows.contains(where: { ($0.resetsAt ?? .distantFuture) <= Date() }) else { return nil }
-        return windows.map(\.remainingFraction).min()
+        states[provider]?.usage?.limitingWindow()?.remainingFraction
     }
 }

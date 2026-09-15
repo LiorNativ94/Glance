@@ -300,6 +300,14 @@ Use `build.sh` to assemble the complete app bundle, including the helper and ico
 
 ## Publishing releases
 
+Before creating or moving a release tag, add or update its exact `## vVERSION` entry in [CHANGELOG.md](CHANGELOG.md).
+Write 2–4 short, single-line `- ` bullets describing user-visible changes.
+Commit the changelog together with the code so both are included in the tag.
+Check the release notes locally with `python3 -B scripts/release_notes.py v1.2.4`, substituting the intended version.
+The release workflow stops before building if the entry is missing, duplicated, empty, or does not contain 2–4 bullets.
+GitHub uses that entry for both new releases and same-tag rebuilds, replacing the release description each time.
+Older tags without the required changelog entry and validation script cannot pass the updated publishing workflow.
+
 After committing and pushing your changes, publish a new version by pushing a new tag:
 
 ```sh

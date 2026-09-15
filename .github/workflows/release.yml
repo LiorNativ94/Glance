@@ -30,8 +30,8 @@ jobs:
           persist-credentials: false
 
       - name: Test
-        # Rendered Settings and popover checks require a desktop and run locally.
-        run: swift test --skip PopoverAlignmentTests
+        # Rendered Settings, metric dashboards, and popover checks run locally.
+        run: swift test --skip 'PopoverAlignmentTests|MetricNavigationTests'
 
       - name: Build and verify universal DMG
         env:

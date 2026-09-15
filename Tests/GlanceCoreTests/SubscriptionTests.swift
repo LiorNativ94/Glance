@@ -98,10 +98,10 @@ final class SubscriptionTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         var continuation: CheckedContinuation<SubscriptionUsage, Error>?
         let started = expectation(description: "fetch started")
-        let store = SubscriptionStore(defaults: defaults, startPolling: false) { _, interactive in
+        let store = SubscriptionStore(defaults: defaults, startPolling: false, fetch: { _, interactive in
             XCTAssertTrue(interactive)
             return try await withCheckedThrowingContinuation { continuation = $0; started.fulfill() }
-        }
+        })
         XCTAssertTrue(store.enabled.isEmpty)
         store.setEnabled(.codex, true)
         await fulfillment(of: [started], timeout: 2)
@@ -118,10 +118,10 @@ final class SubscriptionTests: XCTestCase {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         var calls = 0
-        let store = SubscriptionStore(defaults: defaults, startPolling: false) { _, _ in
+        let store = SubscriptionStore(defaults: defaults, startPolling: false, fetch: { _, _ in
             calls += 1
             throw SubscriptionError.rateLimited(Date().addingTimeInterval(900))
-        }
+        })
         store.setEnabled(.claude, true)
         store.refresh(.claude)
         for _ in 0..<10 { await Task.yield() }

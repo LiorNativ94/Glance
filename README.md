@@ -5,21 +5,41 @@ Glance is a lightweight native macOS utility with a compact dashboard, customiza
 Built with Swift, AppKit, and SwiftUI, with no third-party package dependencies or telemetry.
 System readings stay local; optional Claude and Codex subscription connections fetch usage directly from their providers.
 
-**[Download Glance v1.2 for macOS](https://github.com/LiorNativ94/Glance/releases/download/v1.2/Glance-1.2-universal.dmg)** · [All releases](https://github.com/LiorNativ94/Glance/releases)
+**[Download Glance v1.2.4 for macOS](https://github.com/LiorNativ94/Glance/releases/download/v1.2.4/Glance-1.2.4-universal.dmg)** · [All releases](https://github.com/LiorNativ94/Glance/releases)
 
 ## Features
 
 - **Menu bar or notch:** switch locations in Customize or Settings; only your chosen location is shown.
 - **Compact notch:** selected icons sit beside the camera, within the menu-bar row, without covering browser tabs.
   Its width adjusts to your selection, and the Glance logo appears only when no selected metrics are available.
-- **Shared icon selection:** choose CPU, memory, battery, drives, and subscription limits in **Customize…**.
+- **Shared icon selection:** choose CPU, memory, drives, and subscription limits in **Customize…**.
   The same selection applies to both display modes and persists across launches.
 - **Claude and Codex usage:** reuse existing CLI sign-ins to see reported plan names, usage windows, and reset countdowns, with Claude and ChatGPT logos.
-- **System monitoring:** CPU and memory history graphs, battery status, and used/free space for local drives.
-- **Dashboard layout:** reorder or hide CPU and memory, storage, battery, keep awake, and AI subscription sections independently of icon choices.
+- **System monitoring:** CPU and memory history graphs and used/free space for local drives.
+- **Dashboard layout:** reorder or hide CPU and memory, storage, keep awake, and AI subscription sections independently of icon choices.
 - **Quiet alerts:** optional notifications for low AI allowance, sustained memory pressure, and low disk space.
 - **Keep awake:** timed or untimed sessions, +15m / +30m extensions, an optional display sleep override, and separately authorized temporary closed-lid mode.
 - **Launch at login:** optional, with no Dock icon.
+
+## New in v1.2.4
+
+- Click a CPU, Memory, Claude, or Codex icon or dashboard row to open its details.
+  **Back to Glance** stays visible above the scrolling content.
+  Click another icon to switch, the same icon to close, or press Escape/click outside.
+- CPU and Memory show the top five or ten processes, sampled every two seconds while open.
+  Process CPU uses 100% per logical core; memory is resident RAM and can include shared pages.
+  Memory also shows pressure, swap, and compressed memory.
+- Subscription **Summary** emphasizes the most constrained general allowance and its reset countdown, with expandable model/feature limits and optional Codex reset availability.
+  Meters consistently show remaining allowance; amber indicates 20% or less, red 10% or less.
+- Enable **History** to keep local quota observations for 90 days, including observed daily increases and each period's last observed remaining allowance.
+  One day appears as a reading; multiple days use labeled charts.
+  Missing intervals stay unknown; disabling deletes saved history.
+- Enable **Activity** to read local recorded tokens by model for Today, 7 days, or 30 days.
+  Codex also groups local records by session and project.
+  Main counts and charts exclude cached input; compact counts expand into exact token breakdowns, including cached reuse and total processed tokens.
+  These records can span accounts on this Mac; token counts do not reveal each model's share of subscription quota.
+- Both provider dashboards use your existing connection and local activity records.
+  No additional sign-in is needed; website-only analytics are omitted.
 
 ## New in v1.2
 
@@ -64,13 +84,13 @@ Screenshots show v1.2 with sample readings, example subscription limits, and gen
 
 ## Install
 
-1. Download the [v1.2 DMG](https://github.com/LiorNativ94/Glance/releases/download/v1.2/Glance-1.2-universal.dmg).
+1. Download the [v1.2.4 DMG](https://github.com/LiorNativ94/Glance/releases/download/v1.2.4/Glance-1.2.4-universal.dmg).
 2. Open the DMG and drag Glance into Applications, quitting any existing copy first.
 3. Open Glance from Applications.
    New installs start in the menu bar; existing installs restore the saved Menu bar or Notch choice.
 
 No Xcode or Swift installation is needed to use the downloaded app.
-The version at the bottom of **Settings…** matches the shipped app version: `1.2` for this release.
+The version at the bottom of **Settings…** matches the shipped app version: `1.2.4` for this release.
 Open the installed copy before enabling launch at login.
 
 Release builds use ad hoc signing and are not notarized, so macOS may block the first launch.
@@ -85,6 +105,10 @@ Each [GitHub Release](https://github.com/LiorNativ94/Glance/releases) includes a
 2. Open **Customize… → Show in → Menu bar / Notch** to choose where Glance appears.
 3. Open **Customize…** and select the metrics you want in that location.
 4. To add subscription limits, connect a provider in **AI subscriptions**, then select **Claude remaining** or **Codex remaining** in **Customize…**.
+
+Choose **System**, **Light**, or **Dark** under **Settings → Appearance**.
+The same appearance applies to the menu-bar and notch dashboards, including detail pages.
+The notch icon strip stays black to blend with the camera area.
 
 Connecting a provider and displaying its icon are separate choices.
 Connected providers remain available in the dashboard even when their icons are unchecked.
@@ -147,7 +171,7 @@ The panel follows display changes and is available across Spaces.
 Open **AI subscriptions** from the dashboard, or **Settings… → Claude & Codex subscriptions…**.
 Enable either provider to reuse its existing local sign-in.
 The cards show reported plan names, session and weekly usage, and reset countdowns when those values are available.
-The meters show **percent used**; the selected menu bar and notch icons show **percent remaining** for the most constrained reported limit.
+The meters show **percent remaining**, matching the selected menu bar and notch icons for the most constrained reported limit.
 Claude also shows Sonnet and Opus weekly windows when returned by the provider.
 In **Customize…**, select **Claude remaining** or **Codex remaining** to add that provider to the menu bar or notch.
 For example, a provider with 70% session usage and 40% weekly usage displays **30% remaining**.
@@ -203,6 +227,7 @@ Sessions do not resume automatically after relaunching the app.
 
 ### Closed-lid mode
 
+Open **Settings… → Lid-closed mode → Set up → Enable for this session**.
 Closed-lid mode requires macOS administrator authorization for each session.
 The bundled helper temporarily runs `pmset -a disablesleep 1`.
 This is a system-wide override that also prevents manual Sleep from the Apple menu while active.
@@ -283,7 +308,7 @@ Use a new `vMAJOR.MINOR` or `vMAJOR.MINOR.PATCH` tag for each version, such as `
 Prerelease suffixes such as `-beta.1` are not supported.
 The **Release DMG** GitHub Actions workflow tests the tagged code, builds both architectures, stamps the app version from the tag, verifies the signatures and DMG, and publishes a GitHub Release with the DMG and its SHA-256 checksum.
 The version at the bottom of Settings reads that same bundled version automatically.
-The rendered Settings version and popover alignment tests require an interactive desktop and run locally rather than in release CI.
+The rendered Settings, metric dashboard, and popover alignment tests require an interactive desktop and run locally rather than in release CI.
 No repository secrets are required; the workflow uses GitHub's built-in token with `contents: write` permission.
 Repository or organization policy must allow GitHub Actions and that permission.
 To build an existing tag manually, open **Actions → Release DMG → Run workflow** on `main` and enter the tag, such as `v1.2`.

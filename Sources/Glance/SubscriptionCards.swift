@@ -3,6 +3,7 @@ import GlanceCore
 
 struct SubscriptionCards: View {
     @ObservedObject var store: SubscriptionStore
+    var openDetails: ((SubscriptionProvider) -> Void)?
     var body: some View {
         VStack(spacing: 12) {
             ForEach(SubscriptionProvider.allCases) { provider in
@@ -17,6 +18,10 @@ struct SubscriptionCards: View {
                             .accessibilityIdentifier("connect-\(provider.rawValue)")
                     }
                     if store.enabled.contains(provider) {
+                        if let openDetails {
+                            Button("View usage details →") { openDetails(provider) }
+                                .accessibilityIdentifier("details-" + provider.rawValue)
+                        }
                         let state = store.states[provider] ?? SubscriptionStore.State()
                         if let usage = state.usage {
                             if let plan = usage.plan {
@@ -33,10 +38,10 @@ struct SubscriptionCards: View {
                                             HStack {
                                                 Text(window.title)
                                                 Spacer()
-                                                Text("\(Int(window.usedPercent.rounded()))% used").monospacedDigit()
+                                                Text("\(Int((100 - window.usedPercent).rounded()))% left").monospacedDigit()
                                             }.font(.system(size: 11))
-                                            ProgressView(value: window.usedPercent, total: 100)
-                                                .tint(window.usedPercent >= 90 ? .orange : .blue)
+                                            ProgressView(value: window.remainingFraction)
+                                                .tint(SubscriptionPresentation.allowanceColor(window))
                                             Text(window.resetDescription(now: context.date))
                                                 .font(.system(size: 10)).foregroundStyle(.secondary)
                                         }
@@ -68,5 +73,21 @@ struct SubscriptionCards: View {
                     .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
             }
         }
+    }
+}
+
+// Shared presentation keeps allowance direction and warning thresholds consistent across views.
+enum SubscriptionPresentation {
+    static func allowanceColor(_ window: UsageWindow) -> Color {
+        window.usedPercent >= 90 ? .red : window.usedPercent >= 80 ? .orange : .accentColor
+    }
+    static func tokens(_ count: Int) -> String {
+        let amount = Double(count)
+        for (divisor, suffix) in [(1_000_000_000.0, "B"), (1_000_000.0, "M"), (1_000.0, "K")] {
+            if amount >= divisor {
+                return (amount / divisor).formatted(.number.precision(.fractionLength(0...2))) + suffix
+            }
+        }
+        return count.formatted()
     }
 }

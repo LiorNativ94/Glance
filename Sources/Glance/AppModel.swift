@@ -7,7 +7,25 @@ final class AppModel: ObservableObject {
     @Published var snapshot = SystemSnapshot()
     @Published var cpuHistory: [Double] = []
     @Published var memoryHistory: [Double] = []
-    @Published var page: Page = .overview
+    @Published var page: Page = .overview { didSet { updateDetailActivity(); onRouteChange?() } }
+    @Published var detailHeight: CGFloat = 560
+    var panelVisible = false { didSet { updateDetailActivity() } }
+    let processes = ProcessStore()
+    let quotaHistory: QuotaHistoryStore
+    let localActivity: LocalActivityStore
+    var providerTabs: [SubscriptionProvider: String] = [:]
+    var onRouteChange: (() -> Void)?
+    var detailMetric: String? { if case .metric(let id) = page { return id }; return nil }
+    var panelWidth: CGFloat { detailMetric == nil ? 320 : 360 }
+    func openMetric(_ id: String) {
+        page = ["cpu", "memory", "claude", "codex"].contains(id) ? .metric(id) : .overview
+    }
+    func goHome() { page = .overview }
+    private func updateDetailActivity() {
+        processes.setActive(panelVisible && ["cpu", "memory"].contains(detailMetric ?? ""))
+        let provider = detailMetric.flatMap(SubscriptionProvider.init(rawValue:))
+        localActivity.setActive(panelVisible && provider.map(subscriptions.enabled.contains) == true ? provider : nil)
+    }
     @Published var selected: [String] {
         didSet { defaults.set(selected, forKey: "selectedMetrics"); onMenuChange?() }
     }
@@ -18,6 +36,21 @@ final class AppModel: ObservableObject {
     @Published var showInNotch: Bool {
         didSet { defaults.set(showInNotch, forKey: "showInNotch"); onNotchChange?() }
     }
+    enum Appearance: String, CaseIterable {
+        case system, light, dark
+        var title: String { rawValue.capitalized }
+        var native: NSAppearance? {
+            switch self {
+            case .system: nil
+            case .light: NSAppearance(named: .aqua)
+            case .dark: NSAppearance(named: .darkAqua)
+            }
+        }
+    }
+    @Published var appearance: Appearance {
+        didSet { defaults.set(appearance.rawValue, forKey: "dashboardAppearance"); onAppearanceChange?() }
+    }
+    var onAppearanceChange: (() -> Void)?
     @Published var settingsError: String?
     @Published var sectionOrder: [DashboardSection] {
         didSet { defaults.set(sectionOrder.map(\.rawValue), forKey: "dashboardSectionOrder") }
@@ -59,10 +92,13 @@ final class AppModel: ObservableObject {
     private var subscriptionChanges: AnyCancellable?
     private var pressureSource: DispatchSourceMemoryPressure?
     private var alertPolicy = AlertPolicy()
-    enum Page { case overview, customize, settings, lidSetup, subscriptions, dashboardLayout, alerts, alertDetail }
+    enum Page: Equatable { case overview, customize, settings, lidSetup, subscriptions, dashboardLayout, alerts, alertDetail, metric(String) }
 
-    init(defaults: UserDefaults = .standard, subscriptions: SubscriptionStore? = nil) {
+    init(defaults: UserDefaults = .standard, subscriptions: SubscriptionStore? = nil,
+         quotaHistory: QuotaHistoryStore? = nil, localActivity: LocalActivityStore? = nil) {
         self.defaults = defaults
+        self.quotaHistory = quotaHistory ?? QuotaHistoryStore(defaults: defaults)
+        self.localActivity = localActivity ?? LocalActivityStore(defaults: defaults)
         self.subscriptions = subscriptions ?? SubscriptionStore(defaults: defaults)
         alertThresholds = AlertThresholds(aiRemainingPercent: defaults.object(forKey: "alertAIRemainingPercent") as? Int ?? 20,
                                           storageFreePercent: defaults.object(forKey: "alertStorageFreePercent") as? Int ?? 5,
@@ -71,9 +107,13 @@ final class AppModel: ObservableObject {
         hiddenSections = Set((defaults.stringArray(forKey: "hiddenDashboardSections") ?? []).compactMap(DashboardSection.init(rawValue:)))
         enabledAlerts = Set((defaults.stringArray(forKey: "enabledAlerts") ?? []).compactMap(AlertKind.init(rawValue:)))
         showInNotch = defaults.bool(forKey: "showInNotch")
+        appearance = Appearance(rawValue: defaults.string(forKey: "dashboardAppearance") ?? "") ?? .system
         selected = defaults.stringArray(forKey: "selectedMetrics") ?? MetricSelection.defaults
         showAwakeIcon = defaults.bool(forKey: "showAwakeIcon")
         launchAtLogin = SMAppService.mainApp.status == .enabled
+        self.subscriptions.onUsage = { [weak self] provider, usage in
+            self?.quotaHistory.record(provider, usage)
+        }
         powerChanges = power.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async { self?.onMenuChange?() }
         }
@@ -82,6 +122,7 @@ final class AppModel: ObservableObject {
                 self?.objectWillChange.send()
                 self?.onMenuChange?()
                 self?.evaluateAlerts()
+                self?.updateDetailActivity()
             }
         }
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification, NSWorkspace.didWakeNotification] {
@@ -105,7 +146,7 @@ final class AppModel: ObservableObject {
     var visibleSections: [DashboardSection] {
         sectionOrder.filter { section in
             if section == .awake && power.active { return true }
-            return !hiddenSections.contains(section) && (section != .battery || snapshot.battery != nil)
+            return !hiddenSections.contains(section)
         }
     }
     func moveSection(_ section: DashboardSection, by offset: Int) {
@@ -157,7 +198,6 @@ final class AppModel: ObservableObject {
     var metricChoices: [(id: String, name: String, icon: String)] {
         var items = [("cpu", "CPU", "cpu"), ("memory", "Memory", "memorychip")]
         items += snapshot.volumes.map { ($0.id, $0.name, $0.isInternal ? "internaldrive" : "externaldrive") }
-        if snapshot.battery != nil { items.append(("battery", "Battery", "battery.100")) }
         items += SubscriptionProvider.allCases.filter { subscriptions.enabled.contains($0) }
             .map { ($0.rawValue, "\($0.name) remaining", "\($0.rawValue)-usage") }
         return items
@@ -171,7 +211,6 @@ final class AppModel: ObservableObject {
         switch id {
         case "cpu": return ReadingFormat.percent(snapshot.cpu)
         case "memory": return ReadingFormat.percent(snapshot.memoryFraction)
-        case "battery": return ReadingFormat.percent(snapshot.battery?.fraction)
         case "claude", "codex": return ReadingFormat.percent(subscriptions.remaining(SubscriptionProvider(rawValue: id)!))
         default: return ReadingFormat.percent(snapshot.volumes.first { $0.id == id }?.fraction)
         }

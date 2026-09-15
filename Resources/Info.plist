@@ -6,8 +6,8 @@
     <key>CFBundleName</key><string>Glance</string>
     <key>CFBundleDisplayName</key><string>Glance</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>1.2</string>
-    <key>CFBundleVersion</key><string>1.2</string>
+    <key>CFBundleShortVersionString</key><string>1.2.4</string>
+    <key>CFBundleVersion</key><string>1.2.4</string>
     <key>CFBundleIconFile</key><string>GlanceIcon</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>LSUIElement</key><true/>

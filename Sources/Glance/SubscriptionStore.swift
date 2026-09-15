@@ -97,8 +97,51 @@ final class SubscriptionClient: NSObject, URLSessionTaskDelegate, @unchecked Sen
         let (data, response) = try await session.data(for: Self.request(provider, credentials: credentials))
         guard let response = response as? HTTPURLResponse else { throw SubscriptionError.invalidResponse }
         try Self.validate(response, provider: provider)
-        do { return try SubscriptionUsage.parse(data, provider: provider, plan: credentials.plan) }
-        catch { throw SubscriptionError.invalidResponse }
+        // Parse quota before optional identity enrichment; profile failures cannot erase valid meters.
+        let usage = try SubscriptionUsage.parse(data, provider: provider, plan: credentials.plan,
+            accountID: provider == .codex ? credentials.accountID.flatMap { $0.isEmpty ? nil : SubscriptionIdentity.codexAccount($0) } : nil)
+        guard provider == .claude else { return usage }
+        var identity: (accountID: String?, email: String?) = (nil, nil)
+        do {
+            let (profile, profileResponse) = try await session.data(for: Self.profileRequest(credentials: credentials))
+            guard let response = profileResponse as? HTTPURLResponse else { throw SubscriptionError.invalidResponse }
+            try Self.validate(response, provider: .claude)
+            identity = try SubscriptionIdentity.parseClaudeProfile(profile)
+        } catch {
+            try Task.checkCancellation()
+        }
+        return SubscriptionUsage(plan: usage.plan, windows: usage.windows, updatedAt: usage.updatedAt,
+                                 accountID: identity.accountID, email: identity.email)
+    }
+
+    static func profileRequest(credentials: SubscriptionCredentials) -> URLRequest {
+        var request = Self.request(.claude, credentials: credentials)
+        request.url = URL(string: "https://api.anthropic.com/api/oauth/profile")!
+        request.setValue(nil, forHTTPHeaderField: "anthropic-beta")
+        request.timeoutInterval = 4
+        return request
+    }
+
+    static func resetRequest(credentials: SubscriptionCredentials) -> URLRequest {
+        var request = Self.request(.codex, credentials: credentials)
+        request.url = URL(string: "https://chatgpt.com/backend-api/wham/rate-limit-reset-credits")!
+        request.setValue("codex-1", forHTTPHeaderField: "OpenAI-Beta")
+        request.setValue("Codex Desktop", forHTTPHeaderField: "originator")
+        request.timeoutInterval = 4
+        return request
+    }
+
+    func fetchResetInventory(expectedAccountID: String) async throws -> ResetCreditInventory {
+        let credentials = try await Task.detached(priority: .utility) {
+            try SubscriptionCredentials.load(.codex, allowInteraction: false)
+        }.value
+        try Task.checkCancellation()
+        guard let rawID = credentials.accountID, !rawID.isEmpty,
+              SubscriptionIdentity.codexAccount(rawID) == expectedAccountID else { throw SubscriptionError.signIn(.codex) }
+        let (data, response) = try await session.data(for: Self.resetRequest(credentials: credentials))
+        guard let response = response as? HTTPURLResponse else { throw SubscriptionError.invalidResponse }
+        try Self.validate(response, provider: .codex)
+        return try ResetCreditInventory.parse(data)
     }
 
     static func validate(_ response: HTTPURLResponse, provider: SubscriptionProvider, now: Date = .now) throws {
@@ -130,20 +173,31 @@ final class SubscriptionStore: ObservableObject {
         var usage: SubscriptionUsage?
         var error: String?
         var refreshing = false
+        var resetInventory: ResetCreditInventory?
+        var resetError: String?
+        var resetUpdatedAt: Date?
+        var resetRefreshing = false
     }
+    typealias ResetFetch = (String) async throws -> ResetCreditInventory
     typealias Fetch = (SubscriptionProvider, Bool) async throws -> SubscriptionUsage
     @Published private(set) var enabled: Set<SubscriptionProvider>
     @Published private(set) var states: [SubscriptionProvider: State] = [:]
     private let defaults: UserDefaults
     private let fetch: Fetch
+    private let resetFetch: ResetFetch?
+    var onUsage: ((SubscriptionProvider, SubscriptionUsage) -> Void)?
+    var detailTabs: [SubscriptionProvider: String] = [:]
     private var timer: Timer?
     private var tasks: [SubscriptionProvider: Task<Void, Never>] = [:]
     private var generations: [SubscriptionProvider: UUID] = [:]
     private var retryAfter: [SubscriptionProvider: Date] = [:]
+    private var resetRetryAfter: Date?
 
     init(defaults: UserDefaults = .standard, startPolling: Bool = true,
-         fetch: @escaping Fetch = { try await SubscriptionClient.shared.fetch($0, allowInteraction: $1) }) {
-        self.defaults = defaults; self.fetch = fetch
+         resetFetch: ResetFetch? = nil, fetch: Fetch? = nil) {
+        self.defaults = defaults
+        self.fetch = fetch ?? { try await SubscriptionClient.shared.fetch($0, allowInteraction: $1) }
+        self.resetFetch = resetFetch ?? (fetch == nil ? { try await SubscriptionClient.shared.fetchResetInventory(expectedAccountID: $0) } : nil)
         enabled = Set((defaults.stringArray(forKey: "subscriptionProviders") ?? []).compactMap(SubscriptionProvider.init(rawValue:)))
         if startPolling {
             refreshAll()
@@ -182,11 +236,34 @@ final class SubscriptionStore: ObservableObject {
             do { result = .success(try await fetch(provider, allowInteraction)) }
             catch { result = .failure(error) }
             guard let self, self.generations[provider] == generation, self.enabled.contains(provider) else { return }
-            self.tasks.removeValue(forKey: provider)
+            defer { if self.generations[provider] == generation { self.tasks.removeValue(forKey: provider) } }
             switch result {
             case .success(let usage):
                 self.states[provider] = State(usage: usage)
                 self.retryAfter.removeValue(forKey: provider)
+                self.onUsage?(provider, usage)
+                guard self.generations[provider] == generation, self.enabled.contains(provider),
+                      provider == .codex, let accountID = usage.accountID, let resetFetch = self.resetFetch else { return }
+                guard (self.resetRetryAfter ?? .distantPast) <= Date() else {
+                    self.states[provider]?.resetError = "Reset inventory is cooling down. It will refresh automatically."
+                    return
+                }
+                self.states[provider]?.resetRefreshing = true
+                let inventory: Result<ResetCreditInventory, Error>
+                do { inventory = .success(try await resetFetch(accountID)) }
+                catch { inventory = .failure(error) }
+                guard self.generations[provider] == generation, self.enabled.contains(provider),
+                      self.states[provider]?.usage?.accountID == accountID else { return }
+                self.states[provider]?.resetRefreshing = false
+                switch inventory {
+                case .success(let value):
+                    self.states[provider]?.resetInventory = value
+                    self.states[provider]?.resetUpdatedAt = value.updatedAt
+                    self.resetRetryAfter = nil
+                case .failure(let error):
+                    self.states[provider]?.resetError = "Reset inventory is unavailable. Your allowance reading is up to date."
+                    if case SubscriptionError.rateLimited(let date) = error { self.resetRetryAfter = date }
+                }
             case .failure(let error):
                 // Clear old readings on failure so a changed account cannot inherit another account's meters.
                 self.states[provider] = State(error: (error as? SubscriptionError)?.errorDescription

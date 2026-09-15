@@ -23,6 +23,7 @@ final class NotchController {
         panel.isReleasedWhenClosed = false
         panel.isOpaque = false
         panel.backgroundColor = .clear
+        panel.appearance = model.appearance.native
         panel.hasShadow = true
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
@@ -45,7 +46,9 @@ final class NotchController {
         }
         modelChanges = model.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async {
-                guard let self, self.model.visibleMetrics != self.displayedMetrics else { return }
+                guard let self else { return }
+                self.panel.appearance = self.model.appearance.native
+                guard self.model.visibleMetrics != self.displayedMetrics else { return }
                 self.update()
             }
         }
@@ -59,11 +62,13 @@ final class NotchController {
     }
 
     func toggle() {
-        if expanded { collapse() } else { expand() }
+        if expanded && model.page != .overview { model.goHome(); update() }
+        else if expanded { collapse() } else { expand() }
     }
     func expand(resetPage: Bool = true) {
         guard model.showInNotch else { return }
         expanded = true
+        model.panelVisible = true
         onExpand?()
         if resetPage { model.page = .overview }
         update()
@@ -72,6 +77,7 @@ final class NotchController {
     func collapse() {
         guard expanded else { return }
         expanded = false
+        model.panelVisible = false
         update()
     }
     func update() {
@@ -92,10 +98,11 @@ final class NotchController {
                                       leftWidth: leftWidth, rightWidth: rightWidth)
         let cameraWidth = header.width - leftWidth - rightWidth
         let dashboardCenter = header.midX
-        let minX = expanded ? min(header.minX, dashboardCenter - 160) : header.minX
-        let maxX = expanded ? max(header.maxX, dashboardCenter + 160) : header.maxX
-        let contentHeight = min(dashboardHeight, min(600, max(120, header.minY - screen.visibleFrame.minY - 20)))
-        dashboardFrame = NSRect(x: dashboardCenter - 160, y: header.minY - contentHeight, width: 320, height: contentHeight)
+        let minX = expanded ? min(header.minX, dashboardCenter - model.panelWidth / 2) : header.minX
+        let maxX = expanded ? max(header.maxX, dashboardCenter + model.panelWidth / 2) : header.maxX
+        let contentHeight = min(model.detailMetric == nil ? dashboardHeight : 588, min(600, max(120, header.minY - screen.visibleFrame.minY - 20)))
+        if model.detailMetric != nil, model.detailHeight != max(100, contentHeight - 28) { model.detailHeight = max(100, contentHeight - 28) }
+        dashboardFrame = NSRect(x: dashboardCenter - model.panelWidth / 2, y: header.minY - contentHeight, width: model.panelWidth, height: contentHeight)
         let width = maxX - minX
         let content = NotchContent(model: model, expanded: expanded, contentHeight: contentHeight,
                                                       headerHeight: header.height, cameraWidth: cameraWidth,
@@ -103,6 +110,11 @@ final class NotchController {
                                                       leftWidth: leftWidth, rightWidth: rightWidth, panelWidth: width,
                                                       headerOffset: header.minX - minX, dashboardOffset: dashboardFrame.minX - minX,
                                                       toggle: { [weak self] in self?.toggle() },
+                                                      select: { [weak self] id in
+            guard let self else { return }
+            if self.expanded && self.model.detailMetric == id { self.collapse() }
+            else { self.model.openMetric(id); self.expand(resetPage: false) }
+        },
                                                       measured: { [weak self] height in
             DispatchQueue.main.async {
                 guard let self, self.expanded,
@@ -155,6 +167,7 @@ private final class NotchPanel: NSPanel {
 }
 
 private struct NotchContent: View {
+    @Environment(\.colorScheme) private var colorScheme
     @ObservedObject var model: AppModel
     let expanded: Bool
     let contentHeight: CGFloat
@@ -168,14 +181,14 @@ private struct NotchContent: View {
     let headerOffset: CGFloat
     let dashboardOffset: CGFloat
     let toggle: () -> Void
+    let select: (String) -> Void
     let measured: (CGFloat) -> Void
     var body: some View {
         ZStack(alignment: .topLeading) {
-            Button(action: toggle) {
-                HStack(spacing: 0) {
+            HStack(spacing: 0) {
                     HStack(spacing: 6) {
                         if leftMetrics.isEmpty && rightMetrics.isEmpty {
-                            MetricIcon(name: "glance").frame(width: 14, height: 14)
+                            Button(action: toggle) { MetricIcon(name: "glance").frame(width: 14, height: 14) }.buttonStyle(.plain).accessibilityIdentifier("glance-notch-toggle")
                         } else {
                             ForEach(leftMetrics, id: \.self) { metric($0) }
                         }
@@ -188,30 +201,36 @@ private struct NotchContent: View {
                 }.foregroundStyle(.white).frame(height: headerHeight)
                     .background(.black, in: UnevenRoundedRectangle(bottomLeadingRadius: 10, bottomTrailingRadius: 10))
                     .contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityLabel(expanded ? "Collapse Glance notch" : "Open Glance notch")
-                .accessibilityValue((leftMetrics + rightMetrics).map { model.name(for: $0) }.joined(separator: ", "))
-                .accessibilityIdentifier("glance-notch-toggle")
+                    .environment(\.colorScheme, .dark)
+
                 .offset(x: headerOffset)
             if expanded {
-                ScrollView {
+                Group {
+                    if model.detailMetric != nil { Dashboard(model: model, power: model.power) }
+                    else { ScrollView {
                     Dashboard(model: model, power: model.power)
                         .background(GeometryReader { proxy in
                             Color.clear.onAppear { measured(proxy.size.height) }
                                 .onChange(of: proxy.size.height) { _, height in measured(height) }
                         })
-                }.scrollIndicators(.hidden).frame(width: 320, height: contentHeight)
+                    } }
+                }.scrollIndicators(.hidden).frame(width: model.panelWidth, height: contentHeight)
+                    .background(Dashboard.background(for: colorScheme))
                     .clipShape(UnevenRoundedRectangle(bottomLeadingRadius: 14, bottomTrailingRadius: 14))
                     .offset(x: dashboardOffset, y: headerHeight)
             }
         }
         .frame(width: panelWidth, height: headerHeight + (expanded ? contentHeight : 0), alignment: .topLeading)
-        .environment(\.colorScheme, .dark)
     }
     private func metric(_ id: String) -> some View {
+        Button { select(id) } label: {
         HStack(spacing: 3) {
             MetricIcon(name: model.icon(for: id)).frame(width: 14, height: 14)
             Text(model.value(for: id)).font(.system(size: 10, weight: .medium)).monospacedDigit()
                 .frame(width: 27, alignment: .trailing)
-        }.help("\(model.name(for: id)): \(model.value(for: id))")
+        }.contentShape(Rectangle())
+        }.buttonStyle(.plain).accessibilityIdentifier("notch-metric-" + id)
+            .accessibilityLabel("Open \(model.name(for: id)) details")
+            .help("\(model.name(for: id)): \(model.value(for: id))")
     }
 }

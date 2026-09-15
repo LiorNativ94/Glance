@@ -50,7 +50,7 @@ final class DashboardEnhancementTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let model = AppModel(defaults: defaults, subscriptions: SubscriptionStore(defaults: defaults, startPolling: false))
         let icons = model.selected
-        for _ in 0..<4 { model.moveSection(.subscriptions, by: -1) }
+        for _ in 0..<3 { model.moveSection(.subscriptions, by: -1) }
         model.hiddenSections = [.storage, .system]
         let restored = AppModel(defaults: defaults, subscriptions: SubscriptionStore(defaults: defaults, startPolling: false))
         XCTAssertEqual(restored.sectionOrder.first, .subscriptions)
@@ -62,7 +62,8 @@ final class DashboardEnhancementTests: XCTestCase {
         model.power.setActive(true)
         defer { model.power.stop() }
         XCTAssertEqual(model.visibleSections, [.awake], "A running session must retain its Stop control")
-        XCTAssertEqual(DashboardSection.restored(["subscriptions", "unknown", "subscriptions"]).count, 5)
+        XCTAssertEqual(DashboardSection.restored(["subscriptions", "battery", "unknown", "subscriptions"]),
+                       [.subscriptions, .system, .storage, .awake])
     }
 
     func testDeniedNotificationPermissionDoesNotEnableAlerts() throws {

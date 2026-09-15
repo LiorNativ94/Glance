@@ -109,7 +109,7 @@ final class PopoverAlignmentTests: XCTestCase {
                 let alert = GlanceAlert(id: kind.rawValue, kind: kind, title: kind.title, body: "Test condition")
                 delegate.reviewAlert(alert)
                 settleLayout()
-                XCTAssertEqual(model.page, kind == .ai ? .subscriptions : .alertDetail)
+                XCTAssertEqual(model.page, kind == .ai ? .subscriptions : kind == .memory ? .metric("memory") : .alertDetail)
                 XCTAssertEqual(model.alertToReview, alert)
                 XCTAssertEqual(model.hiddenSections, Set(DashboardSection.allCases))
                 XCTAssertEqual(delegate.popover.isShown, !notch)
@@ -203,12 +203,12 @@ final class PopoverAlignmentTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         defaults.set(true, forKey: "showInNotch")
         defaults.set(["claude", "codex"], forKey: "subscriptionProviders")
-        let store = SubscriptionStore(defaults: defaults, startPolling: false) { provider, _ in
+        let store = SubscriptionStore(defaults: defaults, startPolling: false, fetch: { provider, _ in
             SubscriptionUsage(plan: provider == .claude ? "max" : "pro", windows: [
                 UsageWindow(id: "session", title: "5-hour", usedPercent: 24, resetsAt: Date().addingTimeInterval(3600)),
                 UsageWindow(id: "weekly", title: "Weekly", usedPercent: 65, resetsAt: Date().addingTimeInterval(172800))
             ])
-        }
+        })
         let model = AppModel(defaults: defaults, subscriptions: store)
         let notch = NotchController(model: model)
         defer { notch.panel.orderOut(nil) }
@@ -235,13 +235,14 @@ final class PopoverAlignmentTests: XCTestCase {
         try VNImageRequestHandler(cgImage: XCTUnwrap(bitmap.cgImage)).perform([request])
         let text = (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: " ")
         XCTAssertTrue(text.contains("Claude"), text)
-        XCTAssertTrue(text.contains("24% used"), text)
+        XCTAssertTrue(text.contains("76% left"), text)
         XCTAssertTrue(text.contains("Weekly"), text)
         XCTAssertEqual(store.remaining(.codex), 0.35)
         let subscriptionHeight = notch.panel.frame.height
         model.page = .settings
         settleLayout()
-        XCTAssertLessThan(notch.panel.frame.height, subscriptionHeight)
+        XCTAssertNotEqual(notch.panel.frame.height, subscriptionHeight, "Settings should resize to fit its content")
+        XCTAssertLessThanOrEqual(notch.panel.frame.height, 600 + collapsedHeight)
         XCTAssertEqual(notch.panel.frame.maxY, top, accuracy: 1)
         notch.collapse()
         XCTAssertEqual(notch.panel.frame.height, collapsedHeight)
@@ -346,7 +347,7 @@ final class PopoverAlignmentTests: XCTestCase {
         XCTAssertEqual(panel.frame.midX, buttonFrame.midX, accuracy: 1,
                        "Visible panel must stay centered under the menu bar item", file: file, line: line)
         let center = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: button.superview)
-        XCTAssertTrue(button.hitTest(center) === button, "The anchor must not intercept menu bar clicks",
+        XCTAssertTrue(button.hitTest(center) is NSButton, "Each metric must remain clickable; the anchor must not intercept clicks",
                       file: file, line: line)
     }
 }

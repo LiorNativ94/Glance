@@ -1,0 +1,6 @@
+{
+  "tool": "Built-in image generation",
+  "reference": "subscription-details-v2.png",
+  "prompt": "Update this approved Glance subscription UI mockup to match its implementation plan. Preserve the two side-by-side panels, native light Mac styling, spacing, all charts and all numeric data. Make only these text changes: (1) In BOTH panel headers replace the back control text 'Overview' with 'Back to Glance', keeping its leading chevron and enough spacing before the provider title. This control is the pinned, always-visible route back to the main dashboard. (2) In LEFT Claude panel's 'Last completed week' row replace '78% used · 22% unused' with 'Last observed: 78% used'. (3) In RIGHT Codex panel's 'Last completed week' row replace '91% used · 9% unused' with 'Last observed: 91% used'. (4) Replace the canvas title 'More than a remaining percentage' with 'Your subscription dashboards'. Keep subtitle 'Glance · Proposed subscription details · Illustrative data'. Preserve every other label and correct bar length, especially Codex 81% and 35% allowance bars. No extra features, dollar amounts, or costs. Clean legible text, unchanged full image composition.",
+  "status": "Illustrative plan visualization; not an implemented screenshot."
+}

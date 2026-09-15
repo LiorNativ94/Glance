@@ -47,7 +47,6 @@ public struct BatteryReading {
     public init(fraction: Double, charging: Bool, onAC: Bool) {
         self.fraction = fraction; self.charging = charging; self.onAC = onAC
     }
-    public var detail: String { charging ? "Charging" : (onAC ? "Plugged in" : "On battery") }
 }
 
 public struct SystemSnapshot {

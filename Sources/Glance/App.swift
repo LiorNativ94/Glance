@@ -30,8 +30,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private(set) var statusItem: NSStatusItem!
     private let popoverAnchor = PopoverAnchorView()
     private var lastWidth: CGFloat = 0
+    private var metricButtons: [String: NSButton] = [:]
     private(set) var notch: NotchController?
     private var alerts: AlertNotifications?
+    private var localMonitor: Any?
+    private var globalMonitor: Any?
+    deinit {
+        if let localMonitor { NSEvent.removeMonitor(localMonitor) }
+        if let globalMonitor { NSEvent.removeMonitor(globalMonitor) }
+        NotificationCenter.default.removeObserver(self)
+    }
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Reopening Glance should reveal the existing instance rather than duplicate menu items.
         let others = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "com.liornativ.Glance")
@@ -53,13 +61,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             NotificationCenter.default.addObserver(self, selector: #selector(updatePopoverAnchor),
                                                    name: NSWindow.didMoveNotification, object: window)
         }
-        popover.behavior = .transient
+        popover.behavior = .applicationDefined
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) { [weak self] event in
+            guard let self, self.popover.isShown else { return event }
+            if event.type == .keyDown, event.keyCode == 53 { self.popover.performClose(nil); return nil }
+            if event.type != .keyDown, event.window !== self.statusItem.button?.window,
+               event.window !== self.popover.contentViewController?.view.window { self.popover.performClose(nil) }
+            return event
+        }
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+            self?.popover.performClose(nil)
+        }
+        popover.appearance = model.appearance.native
+        model.onAppearanceChange = { [weak self] in self?.popover.appearance = self?.model.appearance.native }
         popover.animates = true
         popover.delegate = self
         let host = NSHostingController(rootView: Dashboard(model: model, power: model.power))
         host.sizingOptions = [.preferredContentSize]
         popover.contentViewController = host
         model.onMenuChange = { [weak self] in self?.updateStatus() }
+        model.onRouteChange = { [weak self] in self?.resizeDetails(); self?.notch?.update(); self?.updatePopoverAnchor() }
         notch = NotchController(model: model)
         notch?.onExpand = { [weak self] in self?.popover.performClose(nil) }
         model.onNotchChange = { [weak self] in
@@ -74,6 +95,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationWillTerminate(_ notification: Notification) { model?.power.stop() }
     @objc private func togglePopover() {
         if popover.isShown { popover.performClose(nil) } else { showPopover() }
+    }
+    private func resizeDetails() {
+        guard !model.showInNotch, model.detailMetric != nil else { return }
+        let screen = statusItem?.button?.window?.screen ?? NSScreen.main
+        let height = min(560, max(180, (screen?.visibleFrame.height ?? 620) - 60))
+        if model.detailHeight != height { model.detailHeight = height }
     }
     @objc private func updatePopoverAnchor() {
         guard let button = statusItem?.button else { return }
@@ -101,11 +128,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
     }
     private func showDashboard() {
+        model.goHome()
         if model.showInNotch { notch?.expand() } else { showPopover() }
     }
     func reviewAlert(_ alert: GlanceAlert) {
         model.alertToReview = alert
-        model.page = alert.kind == .ai ? .subscriptions : .alertDetail
+        if alert.kind == .ai, let provider = alert.id.split(separator: ":").dropFirst().first { model.openMetric(String(provider)) }
+        else if alert.kind == .ai { model.page = .subscriptions }
+        else if alert.kind == .memory { model.openMetric("memory") }
+        else { model.page = .alertDetail }
         if model.showInNotch { notch?.expand(resetPage: false) }
         else { showPopover(resetPage: false) }
     }
@@ -116,43 +147,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         notch?.collapse()
         if resetPage { model.page = .overview }
         NSApp.activate(ignoringOtherApps: true)
+        resizeDetails()
         updatePopoverAnchor()
+        model.panelVisible = true
         popover.show(relativeTo: popoverAnchor.bounds, of: popoverAnchor, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
     }
+    func popoverDidClose(_ notification: Notification) {
+        if notch?.expanded != true { model.panelVisible = false }
+    }
+    @objc private func metricClicked(_ sender: NSButton) {
+        let id = sender.identifier?.rawValue ?? "glance"
+        if popover.isShown, model.detailMetric == id || (model.page == .overview && !["cpu", "memory", "claude", "codex"].contains(id)) { popover.performClose(nil); return }
+        model.openMetric(id)
+        if !popover.isShown { showPopover(resetPage: false) }
+    }
     private func updateStatus() {
         guard let button = statusItem?.button else { return }
-        var items = model.visibleMetrics.map { (model.icon(for: $0), model.value(for: $0)) }
-        if items.isEmpty { items = [("glance", "")] }
-        if model.showAwakeIcon && model.power.active { items.append(("cup.and.saucer", "")) }
-        // Fixed-width digit cells keep neighboring menu items from shifting as percentages change.
+        var ids = model.visibleMetrics
+        if ids.isEmpty { ids = ["glance"] }
+        if model.showAwakeIcon && model.power.active { ids.append("awake") }
+        for id in Array(metricButtons.keys) where !ids.contains(id) { metricButtons.removeValue(forKey: id)?.removeFromSuperview() }
         let font = NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium)
-        let widths = items.map { $0.1.isEmpty ? CGFloat(16) : CGFloat(45) }
-        let width = widths.reduce(0, +) + CGFloat(max(0, items.count - 1)) * 5
-        let image = NSImage(size: NSSize(width: width, height: 22), flipped: false) { rect in
-            var x: CGFloat = 0
-            for (index, item) in items.enumerated() {
-                let icon = MetricIcons.image(item.0)
-                icon.draw(in: NSRect(x: x, y: 3, width: 16, height: 16))
-                if !item.1.isEmpty {
-                    let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.labelColor]
-                    let text = item.1 as NSString
-                    let textWidth = text.size(withAttributes: attrs).width
-                    text.draw(at: NSPoint(x: x + widths[index] - textWidth, y: 5), withAttributes: attrs)
-                }
-                x += widths[index] + 5
+        var x: CGFloat = 5
+        for id in ids {
+            let value = ["glance", "awake"].contains(id) ? "" : model.value(for: id)
+            let width: CGFloat = value.isEmpty ? 16 : 45
+            let control: NSButton
+            if let existing = metricButtons[id] { control = existing }
+            else {
+                control = NSButton(); control.isBordered = false
+                control.target = self; control.action = #selector(metricClicked(_:))
+                control.identifier = NSUserInterfaceItemIdentifier(id)
+                control.setAccessibilityIdentifier("metric-" + id)
+                button.addSubview(control); metricButtons[id] = control
             }
-            return true
+            let icon = id == "glance" ? "glance" : id == "awake" ? "cup.and.saucer" : model.icon(for: id)
+            let rendered = NSImage(size: NSSize(width: width, height: 22), flipped: false) { _ in
+                MetricIcons.image(icon).draw(in: NSRect(x: 0, y: 3, width: 16, height: 16))
+                if !value.isEmpty {
+                    let text = value as NSString
+                    let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.labelColor]
+                    text.draw(at: NSPoint(x: width - text.size(withAttributes: attrs).width, y: 5), withAttributes: attrs)
+                }
+                return true
+            }
+            rendered.isTemplate = true
+            control.image = rendered; control.imagePosition = .imageOnly
+            control.frame = NSRect(x: x, y: 0, width: width, height: 22)
+            control.toolTip = id == "glance" ? "Open Glance" : "Open \(model.name(for: id)) details"
+            control.setAccessibilityLabel(id == "glance" ? "Open Glance" : "\(model.name(for: id)): \(value)")
+            x += width + 5
         }
-        image.isTemplate = true
-        button.image = image
-        button.imagePosition = .imageOnly
-        button.title = ""
-        button.toolTip = model.visibleMetrics.isEmpty ? "Glance — open dashboard" : model.visibleMetrics.map { "\(model.name(for: $0)): \(model.value(for: $0))" }.joined(separator: " · ")
+        button.image = nil; button.title = ""
         button.setAccessibilityLabel("Glance")
-        button.setAccessibilityValue(button.toolTip)
         button.setAccessibilityIdentifier("glance-menu-bar")
-        if width != lastWidth { statusItem.length = width + 10; lastWidth = width }
+        if x != lastWidth { statusItem.length = x; lastWidth = x }
     }
 }
 

@@ -40,7 +40,7 @@ struct SubscriptionCards: View {
                                                 Spacer()
                                                 Text("\(Int((100 - window.usedPercent).rounded()))% left").monospacedDigit()
                                             }.font(.system(size: 11))
-                                            ProgressView(value: window.remainingFraction)
+                                            ProgressView(value: window.usedPercent, total: 100)
                                                 .tint(SubscriptionPresentation.allowanceColor(window))
                                             Text(window.resetDescription(now: context.date))
                                                 .font(.system(size: 10)).foregroundStyle(.secondary)

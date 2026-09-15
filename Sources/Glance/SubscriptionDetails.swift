@@ -71,6 +71,7 @@ struct SubscriptionDetails: View {
                 Spacer()
             }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.blue)
         }
+        .disclosureGroupStyle(FullRowDisclosureStyle())
         .onAppear { tab = model.providerTabs[provider] ?? "Summary" }
         .onChange(of: tab) { _, value in model.providerTabs[provider] = value }
         .onChange(of: usage?.accountID) { _, _ in selectedWindow = ""; selectedPeriod = nil }
@@ -133,7 +134,7 @@ struct SubscriptionDetails: View {
                 Text(current ? "remaining" : "last known remaining")
                     .font(.system(size: 12)).foregroundStyle(.secondary)
             }
-            ProgressView(value: window.remainingFraction).tint(color)
+            ProgressView(value: window.usedPercent, total: 100).tint(color)
             Text(window.resetDescription()).font(.system(size: 12)).foregroundStyle(.secondary)
                 .help(window.resetsAt?.formatted(date: .complete, time: .shortened) ?? "Reset time unavailable")
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
@@ -148,7 +149,7 @@ struct SubscriptionDetails: View {
                 Spacer()
                 Text("\(100 - window.usedPercent, specifier: "%.0f")% left").monospacedDigit().fontWeight(.semibold)
             }.font(.system(size: 12))
-            ProgressView(value: window.remainingFraction).tint(SubscriptionPresentation.allowanceColor(window))
+            ProgressView(value: window.usedPercent, total: 100).tint(SubscriptionPresentation.allowanceColor(window))
             Text(window.resetDescription()).font(.system(size: 11)).foregroundStyle(.secondary)
                 .help(window.resetsAt?.formatted(date: .complete, time: .shortened) ?? "Reset time unavailable")
         }.accessibilityElement(children: .combine)
@@ -389,6 +390,29 @@ private struct QuotaDayChart: View {
                 .chartYScale(domain: 0...max(1, (days.compactMap(\.value).max() ?? 0) * 1.25))
                 .frame(height: 110).accessibilityLabel("Observed daily quota changes. Crosses indicate missing coverage.")
                 Text("Percentage points · × no coverage").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct FullRowDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button { configuration.isExpanded.toggle() } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
+                        .frame(width: 10)
+                        .accessibilityHidden(true)
+                    configuration.label.frame(maxWidth: .infinity, alignment: .leading)
+                }.contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(configuration.isExpanded ? "Expanded" : "Collapsed")
+            if configuration.isExpanded {
+                configuration.content.padding(.leading, 14)
             }
         }
     }

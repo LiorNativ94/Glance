@@ -179,6 +179,22 @@ final class MetricNavigationTests: XCTestCase {
         XCTAssertTrue(summary.contains("16%"), summary)
         XCTAssertTrue(summary.contains("Low"), summary)
         XCTAssertTrue(summary.contains("Usage resets"), summary)
+        // A nearly exhausted allowance must look nearly full, even though the label shows what remains.
+        let imageData = try Data(contentsOf: URL(fileURLWithPath: "/tmp/glance-detail-renders/codex-existing-summary.png"))
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(data: imageData))
+        var widestFill = 0
+        for y in stride(from: 0, to: bitmap.pixelsHigh, by: 2) {
+            var filledPixels = 0
+            for x in 0..<bitmap.pixelsWide {
+                guard let color = bitmap.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                if color.redComponent > 0.85 && color.greenComponent > 0.3 && color.greenComponent < 0.8 && color.blueComponent < 0.5 {
+                    filledPixels += 1
+                }
+            }
+            widestFill = max(widestFill, filledPixels)
+        }
+        // The track occupies about 84% of this panel; 84% consumed fills about 71% of the panel width.
+        XCTAssertEqual(Double(widestFill) / Double(bitmap.pixelsWide), 0.71, accuracy: 0.04)
         model.goHome(); settle(); model.providerTabs[.codex] = "Activity"; model.openMetric("codex"); settle()
         let activityText = try renderedText(view, name: "codex-existing-activity")
         XCTAssertTrue(activityText.contains("4M tokens"), activityText)

@@ -136,7 +136,7 @@ struct Dashboard: View {
                     .toggleStyle(.checkbox).font(.system(size: 11)).padding(.top, 10)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 28)
             }
-            if power.lidActive || power.lidStopping || power.authorizing { lidControl }
+            lidControl
         }
     }
     private var subscriptionSection: some View {
@@ -182,6 +182,7 @@ struct Dashboard: View {
                     Button("Stop") { power.endLidSession() }.disabled(power.lidStopping)
                 } else {
                     Button("Set up") { model.page = .lidSetup }.disabled(power.authorizing || power.lidStopping)
+                        .accessibilityIdentifier("lid-setup")
                 }
             }.padding(.top, 12)
         }
@@ -268,10 +269,9 @@ struct Dashboard: View {
                 .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Button("Claude & Codex subscriptions…") { model.page = .subscriptions }
             Button("Alerts…") { model.page = .alerts }.accessibilityIdentifier("alert-settings")
-            lidControl
             Text("Readings update every 2 seconds. Storage refreshes every 15 seconds and when drives connect or disconnect.")
                 .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            Text("Keep-awake stops at 10% battery. Lid-closed mode is temporary and needs authorization for each session.")
+            Text("Keep-awake stops at 10% battery.")
                 .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Divider()
             HStack {

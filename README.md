@@ -30,7 +30,8 @@ System readings stay local; optional Claude and Codex subscription connections f
   Process CPU uses 100% per logical core; memory is resident RAM and can include shared pages.
   Memory also shows pressure, swap, and compressed memory.
 - Subscription **Summary** emphasizes the most constrained general allowance and its reset countdown, with expandable model/feature limits and optional Codex reset availability.
-  Meters consistently show remaining allowance; amber indicates 20% or less, red 10% or less.
+  Allowance bars fill as usage is consumed; labels show what remains.
+  Amber indicates 20% or less remaining, red 10% or less.
 - Enable **History** to keep local quota observations for 90 days, including observed daily increases and each period's last observed remaining allowance.
   One day appears as a reading; multiple days use labeled charts.
   Missing intervals stay unknown; disabling deletes saved history.
@@ -119,7 +120,8 @@ Enable **Keep awake** for a 30-minute, one-hour, two-hour, or untimed session.
 The optional **Keep display on** setting applies only while a session is active.
 The menu bar cup indicator is optional and disabled by default; it is configured with **Show keep-awake icon** in **Customize…**.
 
-Open **Settings…** to configure launch at login, alerts, lid-closed mode, or quit the app.
+Open **Settings…** to configure launch at login, alerts, or quit the app.
+Lid-closed mode is available in the main dashboard’s **Keep awake** section.
 
 ### Dashboard layout and alerts
 
@@ -171,7 +173,8 @@ The panel follows display changes and is available across Spaces.
 Open **AI subscriptions** from the dashboard, or **Settings… → Claude & Codex subscriptions…**.
 Enable either provider to reuse its existing local sign-in.
 The cards show reported plan names, session and weekly usage, and reset countdowns when those values are available.
-The meters show **percent remaining**, matching the selected menu bar and notch icons for the most constrained reported limit.
+The bars fill by **percent used**; their labels show **percent remaining**, matching the selected menu bar and notch icons for the most constrained reported limit.
+For example, 14% remaining displays an 86%-filled bar.
 Claude also shows Sonnet and Opus weekly windows when returned by the provider.
 In **Customize…**, select **Claude remaining** or **Codex remaining** to add that provider to the menu bar or notch.
 For example, a provider with 70% session usage and 40% weekly usage displays **30% remaining**.
@@ -227,7 +230,7 @@ Sessions do not resume automatically after relaunching the app.
 
 ### Closed-lid mode
 
-Open **Settings… → Lid-closed mode → Set up → Enable for this session**.
+In the main dashboard’s **Keep awake** section, choose **Lid-closed mode → Set up → Enable for this session**.
 Closed-lid mode requires macOS administrator authorization for each session.
 The bundled helper temporarily runs `pmset -a disablesleep 1`.
 This is a system-wide override that also prevents manual Sleep from the Apple menu while active.

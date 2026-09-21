@@ -207,6 +207,52 @@ final class MetricNavigationTests: XCTestCase {
             XCTAssertFalse(text.localizedCaseInsensitiveContains("connect"), text)
         }
     }
+    func testCodexSessionsRenderInsideProviderDetails() throws {
+        _ = NSApplication.shared
+        let suite = "Glance.CodexSessions.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: directory) }
+        defaults.set(["codex"], forKey: "subscriptionProviders")
+        defaults.set(["codex"], forKey: "selectedMetrics")
+        let timestamp = ISO8601DateFormatter().string(from: .now)
+        let root = """
+        {"timestamp":"\(timestamp)","type":"session_meta","payload":{"id":"root","cwd":"/tmp/Glance","originator":"Codex Desktop","thread_source":"user"}}
+        {"timestamp":"\(timestamp)","type":"event_msg","payload":{"type":"task_started"}}
+
+        """
+        let agent = """
+        {"timestamp":"\(timestamp)","type":"session_meta","payload":{"id":"agent","cwd":"/tmp/Glance","originator":"Codex Desktop","thread_source":"subagent","source":{"subagent":{"thread_spawn":{"parent_thread_id":"root","agent_nickname":"Turing"}}}}}
+        {"timestamp":"\(timestamp)","type":"event_msg","payload":{"type":"task_started"}}
+        {"timestamp":"\(timestamp)","type":"response_item","payload":{"type":"function_call","name":"request_user_input_async","call_id":"input"}}
+
+        """
+        try Data(root.utf8).write(to: directory.appendingPathComponent("root.jsonl"))
+        try Data(agent.utf8).write(to: directory.appendingPathComponent("agent.jsonl"))
+        let sessionStore = CodexSessionStore(root: directory, catalogURL: nil,
+                                             reader: CodexSessionReader(maxFiles: 5), startsTimer: false)
+        let store = SubscriptionStore(defaults: defaults, startPolling: false, fetch: { _, _ in
+            SubscriptionUsage(plan: "Pro", windows: [], accountID: "fixture")
+        })
+        let model = AppModel(defaults: defaults, subscriptions: store, codexSessions: sessionStore)
+        model.providerTabs[.codex] = "Sessions"
+        let delegate = AppDelegate()
+        delegate.configureMenuBar(model: model)
+        defer { model.panelVisible = false; delegate.popover.close(); delegate.notch?.panel.orderOut(nil); NSStatusBar.system.removeStatusItem(delegate.statusItem) }
+        store.refreshAll(); settle()
+        let button = try XCTUnwrap(delegate.statusItem.button?.subviews.compactMap { $0 as? NSButton }.first)
+        button.performClick(nil); settle()
+        let view = try XCTUnwrap(delegate.popover.contentViewController?.view)
+        let text = try renderedText(view, name: "codex-sessions")
+        XCTAssertTrue(text.contains("Sessions"), text)
+        XCTAssertTrue(text.contains("2 active agents"), text)
+        XCTAssertTrue(text.contains("1 needs you"), text)
+        XCTAssertTrue(text.contains("Glance"), text)
+        XCTAssertTrue(text.contains("Turing"), text)
+        XCTAssertTrue(text.contains("Needs input"), text)
+        XCTAssertTrue(text.contains("Session alerts"), text)
+    }
     func testDashboardAppearanceMatchesAcrossModesAndNavigation() throws {
         _ = NSApplication.shared
         let suite = "Glance.Appearance.\(UUID())"

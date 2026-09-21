@@ -7,6 +7,7 @@ struct SubscriptionDetails: View {
     @ObservedObject var store: SubscriptionStore
     @ObservedObject var history: QuotaHistoryStore
     @ObservedObject var activity: LocalActivityStore
+    @ObservedObject var sessions: CodexSessionStore
     let provider: SubscriptionProvider
     @State private var tab = "Summary"
     @State private var days = 7
@@ -27,6 +28,7 @@ struct SubscriptionDetails: View {
     }
     private var report: LocalActivityReport? { activity.reports[provider] }
     private var tint: Color { .accentColor }
+    private var tabs: [String] { provider == .codex ? ["Summary", "Sessions", "Activity", "History"] : ["Summary", "Activity", "History"] }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { _ in content }
@@ -48,17 +50,18 @@ struct SubscriptionDetails: View {
                     .accessibilityIdentifier("refresh-" + provider.rawValue)
             }
             Picker("Usage view", selection: $tab) {
-                ForEach(["Summary", "Activity", "History"], id: \.self) { Text($0).tag($0) }
+                ForEach(tabs, id: \.self) { Text($0).tag($0) }
             }.pickerStyle(.segmented).labelsHidden().accessibilityIdentifier("usage-tabs")
             ScrollView {
                 VStack(alignment: .leading, spacing: 16) {
-                    if !store.enabled.contains(provider) { connection }
+                    if !store.enabled.contains(provider) && tab != "Sessions" { connection }
                     else {
-                        if let error = state.error { note(error, warning: true) }
-                        if let usage, Date.now.timeIntervalSince(usage.updatedAt) >= 600 {
+                        if tab != "Sessions", let error = state.error { note(error, warning: true) }
+                        if tab != "Sessions", let usage, Date.now.timeIntervalSince(usage.updatedAt) >= 600 {
                             note("Last known allowance. Refresh to see current availability.", warning: true)
                         }
                         switch tab {
+                        case "Sessions": sessionsContent
                         case "Activity": activityContent
                         case "History": historyContent
                         default: summary
@@ -67,12 +70,19 @@ struct SubscriptionDetails: View {
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 4)
             }.scrollIndicators(.automatic)
             HStack {
-                Button("Open usage page ↗") { NSWorkspace.shared.open(provider.usageURL) }
+                if tab == "Sessions" {
+                    Button("Session alerts…") { model.page = .alerts }
+                } else {
+                    Button("Open usage page ↗") { NSWorkspace.shared.open(provider.usageURL) }
+                }
                 Spacer()
             }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.blue)
         }
         .disclosureGroupStyle(FullRowDisclosureStyle())
-        .onAppear { tab = model.providerTabs[provider] ?? "Summary" }
+        .onAppear {
+            tab = tabs.contains(model.providerTabs[provider] ?? "") ? model.providerTabs[provider]! : "Summary"
+            if provider == .codex { sessions.refresh() }
+        }
         .onChange(of: tab) { _, value in model.providerTabs[provider] = value }
         .onChange(of: usage?.accountID) { _, _ in selectedWindow = ""; selectedPeriod = nil }
     }
@@ -166,6 +176,108 @@ struct SubscriptionDetails: View {
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             } else { note(state.resetRefreshing ? "Checking available resets…" : (state.resetError ?? "Reset inventory was not supplied for this account.")) }
         }
+    }
+    private var sessionsContent: some View {
+        Group {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("\(sessions.activeCount) active agent\(sessions.activeCount == 1 ? "" : "s")")
+                        .font(.system(size: 22, weight: .semibold)).monospacedDigit()
+                    Text("Local Codex tasks from the last 24 hours")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                Spacer()
+                if sessions.attentionCount > 0 {
+                    Label("\(sessions.attentionCount) needs you", systemImage: "exclamationmark.circle.fill")
+                        .font(.system(size: 11, weight: .medium)).foregroundStyle(.orange)
+                }
+            }
+            if let error = sessions.snapshot.error { note(error, warning: true) }
+            if sessions.sessions.isEmpty && sessions.snapshot.error == nil {
+                note("No recent Codex tasks found. New tasks appear here automatically while Glance is running.")
+            }
+            ForEach(groupedSessions, id: \.project) { group in
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Text(group.project).font(.system(size: 12, weight: .semibold))
+                        Spacer()
+                        Text("\(group.sessions.count)").font(.system(size: 10)).foregroundStyle(.secondary).monospacedDigit()
+                    }.padding(.bottom, 4)
+                    ForEach(group.sessions) { session in sessionRow(session) }
+                }
+            }
+            note("Glance stores lifecycle metadata only; prompts and responses are not retained. Click a task to open it in Codex.")
+        }
+    }
+    private var groupedSessions: [(project: String, sessions: [CodexSession])] {
+        Dictionary(grouping: sessions.sessions, by: \.project).map { project, values in
+            (project, values.sorted {
+                if $0.status.isActive != $1.status.isActive { return $0.status.isActive }
+                return $0.updatedAt > $1.updatedAt
+            })
+        }.sorted {
+            let left = $0.sessions.filter(\.status.isActive).count
+            let right = $1.sessions.filter(\.status.isActive).count
+            return left == right ? $0.project.localizedCaseInsensitiveCompare($1.project) == .orderedAscending : left > right
+        }
+    }
+    private func sessionRow(_ session: CodexSession) -> some View {
+        VStack(spacing: 0) {
+            Button {
+                if let url = session.deepLink { NSWorkspace.shared.open(url) }
+            } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: sessionIcon(session.status))
+                        .foregroundStyle(sessionColor(session.status)).frame(width: 14)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(session.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
+                        HStack(spacing: 4) {
+                            if let agent = session.agentName, agent != session.title { Text(agent); Text("·") }
+                            Text(sessionStatus(session.status))
+                            Text("·")
+                            Text(sessionTime(session))
+                        }.font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer(minLength: 6)
+                    Image(systemName: "arrow.up.forward.app").font(.system(size: 10)).foregroundStyle(.secondary)
+                }.padding(.vertical, 8).contentShape(Rectangle())
+            }.buttonStyle(.plain).accessibilityIdentifier("codex-session-\(session.id)")
+            Divider()
+        }
+    }
+    private func sessionStatus(_ status: CodexSessionStatus) -> String {
+        switch status {
+        case .running: return "Running"
+        case .needsInput: return "Needs input"
+        case .needsApproval: return "Needs approval"
+        case .ready: return "Ready"
+        case .failed: return "Error"
+        }
+    }
+    private func sessionIcon(_ status: CodexSessionStatus) -> String {
+        switch status {
+        case .running: return "circle.fill"
+        case .needsInput, .needsApproval: return "exclamationmark.circle.fill"
+        case .ready: return "checkmark.circle.fill"
+        case .failed: return "xmark.circle.fill"
+        }
+    }
+    private func sessionColor(_ status: CodexSessionStatus) -> Color {
+        switch status {
+        case .running: return .blue
+        case .needsInput, .needsApproval: return .orange
+        case .ready: return .green
+        case .failed: return .red
+        }
+    }
+    private func sessionTime(_ session: CodexSession) -> String {
+        if session.status.isActive, let started = session.startedAt {
+            let seconds = max(0, Int(Date.now.timeIntervalSince(started)))
+            if seconds < 60 { return "\(seconds)s" }
+            if seconds < 3600 { return "\(seconds / 60)m" }
+            return "\(seconds / 3600)h \((seconds % 3600) / 60)m"
+        }
+        return session.updatedAt.formatted(.relative(presentation: .named))
     }
     private var activityContent: some View {
         Group {

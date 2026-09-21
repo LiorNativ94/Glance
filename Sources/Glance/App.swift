@@ -132,6 +132,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if model.showInNotch { notch?.expand() } else { showPopover() }
     }
     func reviewAlert(_ alert: GlanceAlert) {
+        if let destination = alert.destination.flatMap(URL.init(string:)), NSWorkspace.shared.open(destination) { return }
         model.alertToReview = alert
         if alert.kind == .ai, let provider = alert.id.split(separator: ":").dropFirst().first { model.openMetric(String(provider)) }
         else if alert.kind == .ai { model.page = .subscriptions }

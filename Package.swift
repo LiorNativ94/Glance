@@ -7,7 +7,7 @@ let package = Package(
     products: [.executable(name: "Glance", targets: ["Glance"]),
                .executable(name: "GlancePowerHelper", targets: ["GlancePowerHelper"])],
     targets: [
-        .target(name: "GlanceCore"),
+        .target(name: "GlanceCore", linkerSettings: [.linkedLibrary("sqlite3")]),
         .executableTarget(name: "Glance", dependencies: ["GlanceCore"], resources: [.process("Resources")]),
         .executableTarget(name: "GlancePowerHelper", dependencies: ["GlanceCore"]),
         .testTarget(name: "GlanceCoreTests", dependencies: ["GlanceCore", "Glance"])

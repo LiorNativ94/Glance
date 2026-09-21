@@ -17,7 +17,8 @@ struct MetricDetails: View {
             }
             Divider()
             if let provider = SubscriptionProvider(rawValue: id) {
-                SubscriptionDetails(model: model, store: model.subscriptions, history: model.quotaHistory, activity: model.localActivity, provider: provider)
+                SubscriptionDetails(model: model, store: model.subscriptions, history: model.quotaHistory,
+                                    activity: model.localActivity, sessions: model.codexSessions, provider: provider)
                     .id(provider)
             } else {
                 ProcessDetails(model: model, store: model.processes, memory: id == "memory")

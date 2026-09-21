@@ -1,11 +1,12 @@
 import Foundation
 
 public enum AlertKind: String, CaseIterable, Identifiable {
-    case ai, memory, storage
+    case ai, codexSessions, memory, storage
     public var id: String { rawValue }
     public var title: String {
         switch self {
         case .ai: return "AI allowance"
+        case .codexSessions: return "Codex sessions"
         case .memory: return "Memory pressure"
         case .storage: return "Low disk space"
         }
@@ -28,8 +29,9 @@ public struct GlanceAlert: Equatable {
     public let kind: AlertKind
     public let title: String
     public let body: String
-    public init(id: String, kind: AlertKind, title: String, body: String) {
-        self.id = id; self.kind = kind; self.title = title; self.body = body
+    public let destination: String?
+    public init(id: String, kind: AlertKind, title: String, body: String, destination: String? = nil) {
+        self.id = id; self.kind = kind; self.title = title; self.body = body; self.destination = destination
     }
 }
 
@@ -88,6 +90,7 @@ public struct AlertPolicy {
                 }
             }
         }
+        // Codex session transitions are evaluated by the live session store.
         return alerts
     }
 

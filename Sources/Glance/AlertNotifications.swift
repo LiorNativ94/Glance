@@ -23,7 +23,9 @@ final class AlertNotifications: NSObject, UNUserNotificationCenterDelegate {
         let content = UNMutableNotificationContent()
         content.title = alert.title
         content.body = alert.body
-        content.userInfo = ["kind": alert.kind.rawValue]
+        var userInfo = ["kind": alert.kind.rawValue]
+        if let destination = alert.destination { userInfo["destination"] = destination }
+        content.userInfo = userInfo
         center.add(UNNotificationRequest(identifier: alert.id, content: content, trigger: nil)) { [weak self] error in
             guard let error else { return }
             DispatchQueue.main.async {
@@ -42,7 +44,9 @@ final class AlertNotifications: NSObject, UNUserNotificationCenterDelegate {
         let request = response.notification.request
         if response.actionIdentifier == UNNotificationDefaultActionIdentifier,
            let raw = request.content.userInfo["kind"] as? String, let kind = AlertKind(rawValue: raw) {
-            let alert = GlanceAlert(id: request.identifier, kind: kind, title: request.content.title, body: request.content.body)
+            let alert = GlanceAlert(id: request.identifier, kind: kind, title: request.content.title,
+                                    body: request.content.body,
+                                    destination: request.content.userInfo["destination"] as? String)
             DispatchQueue.main.async { [weak self] in self?.openAlert?(alert) }
         }
         completionHandler()

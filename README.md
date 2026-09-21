@@ -17,7 +17,7 @@ System readings stay local; optional Claude and Codex subscription connections f
 - **Claude and Codex usage:** reuse existing CLI sign-ins to see reported plan names, usage windows, and reset countdowns, with Claude and ChatGPT logos.
 - **System monitoring:** CPU and memory history graphs and used/free space for local drives.
 - **Dashboard layout:** reorder or hide CPU and memory, storage, keep awake, and AI subscription sections independently of icon choices.
-- **Quiet alerts:** optional notifications for low AI allowance, sustained memory pressure, and low disk space.
+- **Quiet alerts:** optional notifications for Codex task completion or required input, low AI allowance, sustained memory pressure, and low disk space.
 - **Keep awake:** timed or untimed sessions, +15m / +30m extensions, an optional display sleep override, and separately authorized temporary closed-lid mode.
 - **Launch at login:** optional, with no Dock icon.
 
@@ -41,6 +41,8 @@ System readings stay local; optional Claude and Codex subscription connections f
   These records can span accounts on this Mac; token counts do not reveal each model's share of subscription quota.
 - Both provider dashboards use your existing connection and local activity records.
   No additional sign-in is needed; website-only analytics are omitted.
+- Codex **Sessions** shows locally active agents, tasks needing input or approval, recent completions, and their projects.
+  Click a row or notification to open that exact task in Codex; internal guardian reviews are excluded.
 
 ## New in v1.2
 

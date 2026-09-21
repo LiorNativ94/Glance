@@ -13,6 +13,7 @@ final class AppModel: ObservableObject {
     let processes = ProcessStore()
     let quotaHistory: QuotaHistoryStore
     let localActivity: LocalActivityStore
+    let codexSessions: CodexSessionStore
     var providerTabs: [SubscriptionProvider: String] = [:]
     var onRouteChange: (() -> Void)?
     var detailMetric: String? { if case .metric(let id) = page { return id }; return nil }
@@ -90,15 +91,18 @@ final class AppModel: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private var powerChanges: AnyCancellable?
     private var subscriptionChanges: AnyCancellable?
+    private var codexSessionChanges: AnyCancellable?
     private var pressureSource: DispatchSourceMemoryPressure?
     private var alertPolicy = AlertPolicy()
     enum Page: Equatable { case overview, customize, settings, lidSetup, subscriptions, dashboardLayout, alerts, alertDetail, metric(String) }
 
     init(defaults: UserDefaults = .standard, subscriptions: SubscriptionStore? = nil,
-         quotaHistory: QuotaHistoryStore? = nil, localActivity: LocalActivityStore? = nil) {
+         quotaHistory: QuotaHistoryStore? = nil, localActivity: LocalActivityStore? = nil,
+         codexSessions: CodexSessionStore? = nil) {
         self.defaults = defaults
         self.quotaHistory = quotaHistory ?? QuotaHistoryStore(defaults: defaults)
         self.localActivity = localActivity ?? LocalActivityStore(defaults: defaults)
+        self.codexSessions = codexSessions ?? .shared
         self.subscriptions = subscriptions ?? SubscriptionStore(defaults: defaults)
         alertThresholds = AlertThresholds(aiRemainingPercent: defaults.object(forKey: "alertAIRemainingPercent") as? Int ?? 20,
                                           storageFreePercent: defaults.object(forKey: "alertStorageFreePercent") as? Int ?? 5,
@@ -114,6 +118,7 @@ final class AppModel: ObservableObject {
         self.subscriptions.onUsage = { [weak self] provider, usage in
             self?.quotaHistory.record(provider, usage)
         }
+        self.codexSessions.onEvent = { [weak self] event in self?.handleCodexSession(event) }
         powerChanges = power.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async { self?.onMenuChange?() }
         }
@@ -123,6 +128,12 @@ final class AppModel: ObservableObject {
                 self?.onMenuChange?()
                 self?.evaluateAlerts()
                 self?.updateDetailActivity()
+            }
+        }
+        codexSessionChanges = self.codexSessions.objectWillChange.sink { [weak self] in
+            DispatchQueue.main.async {
+                self?.objectWillChange.send()
+                self?.onMenuChange?()
             }
         }
         for name in [NSWorkspace.didMountNotification, NSWorkspace.didUnmountNotification, NSWorkspace.didWakeNotification] {
@@ -178,6 +189,21 @@ final class AppModel: ObservableObject {
         let usages = subscriptions.states.compactMapValues(\.usage)
         for alert in alertPolicy.evaluate(enabled: enabledAlerts, snapshot: snapshot,
                                            memoryPressure: memoryPressure, usages: usages, thresholds: alertThresholds) { onAlert(alert) }
+    }
+    private func handleCodexSession(_ event: CodexSessionEvent) {
+        guard enabledAlerts.contains(.codexSessions), let onAlert else { return }
+        let session: CodexSession
+        let title: String
+        switch event {
+        case .ready(let value): session = value; title = "Codex agent finished"
+        case .needsInput(let value): session = value; title = "Codex needs your input"
+        case .needsApproval(let value): session = value; title = "Codex needs approval"
+        case .failed(let value): session = value; title = "Codex agent stopped with an error"
+        }
+        let destination = session.deepLink?.absoluteString
+        onAlert(GlanceAlert(id: "codex-session:\(session.id):\(session.status.rawValue):\(session.updatedAt.timeIntervalSince1970)",
+                            kind: .codexSessions, title: title,
+                            body: "\(session.title) · \(session.project)", destination: destination))
     }
     private func updatePressureMonitoring() {
         guard enabledAlerts.contains(.memory) else {

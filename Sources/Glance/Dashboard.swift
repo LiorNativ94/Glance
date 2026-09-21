@@ -147,11 +147,16 @@ struct Dashboard: View {
                     Spacer(); Image(systemName: "chevron.right")
                 }.font(.system(size: 11, weight: .medium)).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("subscriptions")
-            if model.subscriptions.enabled.isEmpty {
+            if model.subscriptions.enabled.isEmpty && model.codexSessions.sessions.isEmpty {
                 Text("Add Claude or Codex usage").font(.system(size: 10)).foregroundStyle(.secondary)
             }
-            ForEach(SubscriptionProvider.allCases.filter { model.subscriptions.enabled.contains($0) }) { provider in
-                Button { model.openMetric(provider.rawValue) } label: {
+            ForEach(SubscriptionProvider.allCases.filter {
+                model.subscriptions.enabled.contains($0) || ($0 == .codex && !model.codexSessions.sessions.isEmpty)
+            }) { provider in
+                Button {
+                    if provider == .codex && !model.subscriptions.enabled.contains(provider) { model.providerTabs[provider] = "Sessions" }
+                    model.openMetric(provider.rawValue)
+                } label: {
                     HStack(spacing: 8) {
                         MetricIcon(name: "\(provider.rawValue)-usage").frame(width: 14, height: 14)
                         VStack(alignment: .leading, spacing: 3) {
@@ -159,14 +164,26 @@ struct Dashboard: View {
                             if let window = model.subscriptions.states[provider]?.usage?.limitingWindow() {
                                 Text("\(window.title) · \(window.resetDescription())").foregroundStyle(.secondary)
                             }
+                            if provider == .codex {
+                                Text(codexSessionSummary)
+                                    .foregroundStyle(model.codexSessions.attentionCount > 0 ? Color.orange : Color.secondary)
+                            }
                         }
                         Spacer()
-                        Text(ReadingFormat.percent(model.subscriptions.remaining(provider)) + " left").monospacedDigit()
+                        if model.subscriptions.enabled.contains(provider) {
+                            Text(ReadingFormat.percent(model.subscriptions.remaining(provider)) + " left").monospacedDigit()
+                        } else { Text("Sessions").foregroundStyle(.secondary) }
                         Image(systemName: "chevron.right").foregroundStyle(.secondary)
                     }.font(.system(size: 10)).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityIdentifier("overview-" + provider.rawValue)
             }
         }
+    }
+    private var codexSessionSummary: String {
+        let active = model.codexSessions.activeCount
+        let needs = model.codexSessions.attentionCount
+        let agents = "\(active) active agent\(active == 1 ? "" : "s")"
+        return needs > 0 ? "\(agents) · \(needs) needs you" : agents
     }
     private var lidControl: some View {
         VStack(spacing: 0) {
@@ -332,6 +349,9 @@ struct Dashboard: View {
                             get: { model.alertThresholds.aiRemainingPercent }, set: { model.updateAlertThresholds(ai: $0) }), in: 1...100)
                             .font(.system(size: 11)).accessibilityIdentifier("alert-ai-threshold")
                         Text("Applies to Claude and Codex. For example, 20% remaining means 80% used.")
+                            .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    case .codexSessions:
+                        Text("When a Codex agent finishes, needs input, needs approval, or fails. Click the notification to open that exact task.")
                             .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     case .memory:
                         Text("When macOS reports elevated pressure for one minute. This measures pressure, not a percentage of RAM used.")

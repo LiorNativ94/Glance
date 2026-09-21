@@ -209,29 +209,43 @@ public final class CodexSessionReader {
             case "task_started":
                 state.lifecycleSeen = true
                 state.status = .running; state.startedAt = date; state.pendingApprovals.removeAll()
+                if let date { state.updatedAt = max(state.updatedAt, date) }
             case "task_complete":
                 state.lifecycleSeen = true
-                state.status = .ready; state.pendingApprovals.removeAll()
+                if !state.status.needsAttention { state.status = .ready }
+                state.pendingApprovals.removeAll()
+                if let date { state.updatedAt = max(state.updatedAt, date) }
             case "turn_aborted", "error":
                 state.lifecycleSeen = true
                 state.status = .failed; state.pendingApprovals.removeAll()
+                if let date { state.updatedAt = max(state.updatedAt, date) }
+            case "item_completed":
+                if let item = payload["item"] as? [String: Any], item["type"] as? String == "UserMessage",
+                   let date {
+                    if state.status == .needsInput { state.status = .running }
+                    state.updatedAt = max(state.updatedAt, date)
+                }
             default: break
             }
         } else if type == "response_item" {
             let itemType = payload["type"] as? String
             let callID = text(payload["call_id"])
-            if itemType == "function_call", text(payload["name"]) == "request_user_input_async", state.status.isActive {
+            if itemType == "function_call",
+               ["request_user_input", "request_user_input_async"].contains(text(payload["name"]) ?? ""),
+               state.status.isActive {
                 state.status = .needsInput
+                if let date { state.updatedAt = max(state.updatedAt, date) }
             } else if (itemType == "function_call" || itemType == "custom_tool_call"),
                       isApprovalRequest(payload), let callID, state.status.isActive {
                 state.pendingApprovals.insert(callID); state.status = .needsApproval
+                if let date { state.updatedAt = max(state.updatedAt, date) }
             } else if (itemType == "function_call_output" || itemType == "custom_tool_call_output"),
                       let callID, state.pendingApprovals.remove(callID) != nil, state.pendingApprovals.isEmpty,
                       state.status == .needsApproval {
                 state.status = .running
+                if let date { state.updatedAt = max(state.updatedAt, date) }
             }
         }
-        if let date { state.updatedAt = max(state.updatedAt, date) }
     }
 
     private func isApprovalRequest(_ payload: [String: Any]) -> Bool {

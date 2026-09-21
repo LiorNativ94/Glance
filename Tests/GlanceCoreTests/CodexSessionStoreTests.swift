@@ -4,6 +4,27 @@ import XCTest
 @testable import GlanceCore
 
 final class CodexSessionStoreTests: XCTestCase {
+    func testGroupsUseLatestInteractionBeforeProjectNameOrActiveStatus() {
+        let old = Date(timeIntervalSince1970: 100)
+        let middle = Date(timeIntervalSince1970: 200)
+        let latest = Date(timeIntervalSince1970: 300)
+        let sessions = [
+            CodexSession(id: "alpha", title: "Alpha", project: "Alpha", workingDirectory: "/Alpha",
+                         status: .running, updatedAt: old),
+            CodexSession(id: "beta-old", title: "Beta old", project: "Beta", workingDirectory: "/Beta",
+                         status: .running, updatedAt: old),
+            CodexSession(id: "beta-new", title: "Beta new", project: "Beta", workingDirectory: "/Beta",
+                         status: .ready, updatedAt: latest),
+            CodexSession(id: "zeta", title: "Zeta", project: "Zeta", workingDirectory: "/Zeta",
+                         status: .ready, updatedAt: middle)
+        ]
+
+        let groups = SubscriptionDetails.groupedSessions(sessions)
+
+        XCTAssertEqual(groups.map(\.project), ["Beta", "Zeta", "Alpha"])
+        XCTAssertEqual(groups.first?.sessions.map(\.id), ["beta-new", "beta-old"])
+    }
+
     func testOnlyEmitsCompletionAfterBaselineRunningState() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

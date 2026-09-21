@@ -5,7 +5,7 @@ Glance is a lightweight native macOS utility with a compact dashboard, customiza
 Built with Swift, AppKit, and SwiftUI, with no third-party package dependencies or telemetry.
 System readings stay local; optional Claude and Codex subscription connections fetch usage directly from their providers.
 
-**[Download Glance v1.2.4 for macOS](https://github.com/LiorNativ94/Glance/releases/download/v1.2.4/Glance-1.2.4-universal.dmg)** · [All releases](https://github.com/LiorNativ94/Glance/releases)
+**[Download Glance v1.2.5 for macOS](https://github.com/LiorNativ94/Glance/releases/download/v1.2.5/Glance-1.2.5-universal.dmg)** · [All releases](https://github.com/LiorNativ94/Glance/releases)
 
 ## Features
 
@@ -20,6 +20,13 @@ System readings stay local; optional Claude and Codex subscription connections f
 - **Quiet alerts:** optional notifications for Codex task completion or required input, low AI allowance, sustained memory pressure, and low disk space.
 - **Keep awake:** timed or untimed sessions, +15m / +30m extensions, an optional display sleep override, and separately authorized temporary closed-lid mode.
 - **Launch at login:** optional, with no Dock icon.
+
+## New in v1.2.5
+
+- Codex **Sessions** shows locally active agents, tasks needing input or approval, recent completions, and their projects.
+  Click a row or notification to open that exact task in Codex; internal guardian reviews are excluded.
+- Projects and sessions are ordered by the latest real interaction.
+  Merely viewing a task does not move it to the top, and attention states remain visible until you respond.
 
 ## New in v1.2.4
 
@@ -41,8 +48,6 @@ System readings stay local; optional Claude and Codex subscription connections f
   These records can span accounts on this Mac; token counts do not reveal each model's share of subscription quota.
 - Both provider dashboards use your existing connection and local activity records.
   No additional sign-in is needed; website-only analytics are omitted.
-- Codex **Sessions** shows locally active agents, tasks needing input or approval, recent completions, and their projects.
-  Click a row or notification to open that exact task in Codex; internal guardian reviews are excluded.
 
 ## New in v1.2
 
@@ -87,13 +92,13 @@ Screenshots show v1.2 with sample readings, example subscription limits, and gen
 
 ## Install
 
-1. Download the [v1.2.4 DMG](https://github.com/LiorNativ94/Glance/releases/download/v1.2.4/Glance-1.2.4-universal.dmg).
+1. Download the [v1.2.5 DMG](https://github.com/LiorNativ94/Glance/releases/download/v1.2.5/Glance-1.2.5-universal.dmg).
 2. Open the DMG and drag Glance into Applications, quitting any existing copy first.
 3. Open Glance from Applications.
    New installs start in the menu bar; existing installs restore the saved Menu bar or Notch choice.
 
 No Xcode or Swift installation is needed to use the downloaded app.
-The version at the bottom of **Settings…** matches the shipped app version: `1.2.4` for this release.
+The version at the bottom of **Settings…** matches the shipped app version: `1.2.5` for this release.
 Open the installed copy before enabling launch at login.
 
 Release builds use ad hoc signing and are not notarized, so macOS may block the first launch.

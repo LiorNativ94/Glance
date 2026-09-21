@@ -210,14 +210,18 @@ struct SubscriptionDetails: View {
         }
     }
     private var groupedSessions: [(project: String, sessions: [CodexSession])] {
-        Dictionary(grouping: sessions.sessions, by: \.project).map { project, values in
+        Self.groupedSessions(sessions.sessions)
+    }
+    static func groupedSessions(_ sessions: [CodexSession]) -> [(project: String, sessions: [CodexSession])] {
+        Dictionary(grouping: sessions, by: \.project).map { project, values in
             (project, values.sorted {
-                if $0.status.isActive != $1.status.isActive { return $0.status.isActive }
-                return $0.updatedAt > $1.updatedAt
+                $0.updatedAt == $1.updatedAt
+                    ? $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
+                    : $0.updatedAt > $1.updatedAt
             })
         }.sorted {
-            let left = $0.sessions.filter(\.status.isActive).count
-            let right = $1.sessions.filter(\.status.isActive).count
+            let left = $0.sessions.map(\.updatedAt).max() ?? .distantPast
+            let right = $1.sessions.map(\.updatedAt).max() ?? .distantPast
             return left == right ? $0.project.localizedCaseInsensitiveCompare($1.project) == .orderedAscending : left > right
         }
     }

@@ -50,6 +50,44 @@ final class CodexSessionTests: XCTestCase {
         XCTAssertTrue(CodexSessionReader().read(root: root).sessions.isEmpty)
     }
 
+    func testNonInteractionRecordsDoNotMakeAViewedSessionNewest() throws {
+        try write("viewed.jsonl", [
+            fixedMeta("viewed"),
+            ["timestamp": "2026-09-21T10:00:00Z", "type": "event_msg", "payload": ["type": "task_started"]],
+            ["timestamp": "2026-09-21T10:01:00Z", "type": "event_msg", "payload": ["type": "task_complete"]],
+            ["timestamp": "2026-09-21T10:10:00Z", "type": "world_state", "payload": ["type": "loaded"]]
+        ])
+        try write("newer.jsonl", [
+            fixedMeta("newer"),
+            ["timestamp": "2026-09-21T10:02:00Z", "type": "event_msg", "payload": ["type": "task_started"]],
+            ["timestamp": "2026-09-21T10:03:00Z", "type": "event_msg", "payload": ["type": "task_complete"]]
+        ])
+
+        let sessions = CodexSessionReader().read(root: root).sessions
+
+        XCTAssertEqual(sessions.map(\.id), ["newer", "viewed"])
+        XCTAssertEqual(sessions.first(where: { $0.id == "viewed" })?.updatedAt,
+                       ISO8601DateFormatter().date(from: "2026-09-21T10:01:00Z"))
+    }
+
+    func testNeedsInputSurvivesTurnCompletionUntilAUserReply() throws {
+        let url = try write("waiting.jsonl", [meta("waiting"), event("task_started", second: 1),
+                                               requestInput(second: 2), event("task_complete", second: 3)])
+        let reader = CodexSessionReader()
+
+        XCTAssertEqual(reader.read(root: root).sessions.first?.status, .needsInput)
+
+        try append(event("task_started", second: 4), to: url)
+        XCTAssertEqual(reader.read(root: root).sessions.first?.status, .running)
+    }
+
+    func testCurrentCodexInputRequestIsDetected() throws {
+        try write("current-input.jsonl", [meta("current-input"), event("task_started", second: 1),
+                                           requestInput(second: 2, name: "request_user_input")])
+
+        XCTAssertEqual(CodexSessionReader().read(root: root).sessions.first?.status, .needsInput)
+    }
+
     @discardableResult private func write(_ name: String, _ values: [[String: Any]]) throws -> URL {
         let url = root.appendingPathComponent(name)
         let data = try values.map { try JSONSerialization.data(withJSONObject: $0) + Data([10]) }.reduce(Data(), +)
@@ -73,13 +111,18 @@ final class CodexSessionTests: XCTestCase {
         return ["timestamp": timestamp(0), "type": "session_meta", "payload": payload]
     }
 
+    private func fixedMeta(_ id: String) -> [String: Any] {
+        ["timestamp": "2026-09-21T09:59:00Z", "type": "session_meta",
+         "payload": ["id": id, "cwd": "/tmp/Glance", "originator": "Codex Desktop", "thread_source": "user"]]
+    }
+
     private func event(_ type: String, second: Int) -> [String: Any] {
         ["timestamp": timestamp(second), "type": "event_msg", "payload": ["type": type]]
     }
 
-    private func requestInput(second: Int) -> [String: Any] {
+    private func requestInput(second: Int, name: String = "request_user_input_async") -> [String: Any] {
         ["timestamp": timestamp(second), "type": "response_item",
-         "payload": ["type": "function_call", "name": "request_user_input_async", "call_id": "input"]]
+         "payload": ["type": "function_call", "name": name, "call_id": "input"]]
     }
 
     private func approval(second: Int) -> [String: Any] {

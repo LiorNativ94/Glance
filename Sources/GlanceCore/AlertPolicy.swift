@@ -1,11 +1,12 @@
 import Foundation
 
 public enum AlertKind: String, CaseIterable, Identifiable {
-    case ai, codexSessions, memory, storage
+    case ai, claudeSessions, codexSessions, memory, storage
     public var id: String { rawValue }
     public var title: String {
         switch self {
         case .ai: return "AI allowance"
+        case .claudeSessions: return "Claude sessions"
         case .codexSessions: return "Codex sessions"
         case .memory: return "Memory pressure"
         case .storage: return "Low disk space"

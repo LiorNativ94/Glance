@@ -1,59 +1,6 @@
 import Foundation
 import SQLite3
 
-public enum CodexSessionStatus: String, Equatable, Sendable {
-    case running
-    case needsInput
-    case needsApproval
-    case ready
-    case failed
-
-    public var isActive: Bool {
-        switch self {
-        case .running, .needsInput, .needsApproval: return true
-        case .ready, .failed: return false
-        }
-    }
-
-    public var needsAttention: Bool { self == .needsInput || self == .needsApproval }
-}
-
-public struct CodexSession: Identifiable, Equatable, Sendable {
-    public let id: String
-    public let title: String
-    public let project: String
-    public let workingDirectory: String
-    public let status: CodexSessionStatus
-    public let startedAt: Date?
-    public let updatedAt: Date
-    public let parentID: String?
-    public let agentName: String?
-
-    public init(id: String, title: String, project: String, workingDirectory: String,
-                status: CodexSessionStatus, startedAt: Date? = nil, updatedAt: Date,
-                parentID: String? = nil, agentName: String? = nil) {
-        self.id = id; self.title = title; self.project = project
-        self.workingDirectory = workingDirectory; self.status = status
-        self.startedAt = startedAt; self.updatedAt = updatedAt
-        self.parentID = parentID; self.agentName = agentName
-    }
-
-    public var deepLink: URL? { URL(string: "codex://threads/\(id)") }
-}
-
-public struct CodexSessionSnapshot: Equatable, Sendable {
-    public let sessions: [CodexSession]
-    public let scannedAt: Date
-    public let error: String?
-
-    public init(sessions: [CodexSession] = [], scannedAt: Date = .now, error: String? = nil) {
-        self.sessions = sessions; self.scannedAt = scannedAt; self.error = error
-    }
-
-    public var activeCount: Int { sessions.count { $0.status.isActive } }
-    public var attentionCount: Int { sessions.count { $0.status.needsAttention } }
-}
-
 /// Bounded, incremental reader for Codex's local lifecycle records. It never retains prompts.
 public final class CodexSessionReader {
     private struct State {
@@ -64,7 +11,7 @@ public final class CodexSessionReader {
         var parentID: String?
         var agentName: String?
         var lifecycleSeen = false
-        var status: CodexSessionStatus = .ready
+        var status: AgentSessionStatus = .ready
         var startedAt: Date?
         var updatedAt: Date = .distantPast
         var pendingApprovals = Set<String>()
@@ -100,16 +47,16 @@ public final class CodexSessionReader {
             .deletingLastPathComponent().appendingPathComponent("sqlite/codex-dev.db")
     }
 
-    public func read(root: URL, catalogURL: URL? = nil, now: Date = .now) -> CodexSessionSnapshot {
+    public func read(root: URL, catalogURL: URL? = nil, now: Date = .now) -> AgentSessionSnapshot {
         let cutoff = now.addingTimeInterval(-24 * 60 * 60)
         guard FileManager.default.fileExists(atPath: root.path) else {
-            return CodexSessionSnapshot(scannedAt: now, error: "Codex session records were not found on this Mac.")
+            return AgentSessionSnapshot(scannedAt: now, error: "Codex session records were not found on this Mac.")
         }
         var files: [(URL, Date)] = []
         guard let enumerator = FileManager.default.enumerator(at: root,
             includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles]) else {
-            return CodexSessionSnapshot(scannedAt: now, error: "Codex session records could not be read.")
+            return AgentSessionSnapshot(scannedAt: now, error: "Codex session records could not be read.")
         }
         for case let file as URL in enumerator where file.pathExtension == "jsonl" {
             guard let values = try? file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey]),
@@ -124,7 +71,7 @@ public final class CodexSessionReader {
         for (file, modified) in files { scan(file: file, modified: modified) }
 
         let catalog = readCatalog(catalogURL, since: cutoff)
-        var byID: [String: CodexSession] = [:]
+        var byID: [String: AgentSession] = [:]
         for state in cache.values where !state.id.isEmpty && state.lifecycleSeen && state.threadSource != "guardian_review" {
             guard state.originator.isEmpty || state.originator.localizedCaseInsensitiveContains("Codex") else { continue }
             let entry = catalog[state.id]
@@ -132,9 +79,10 @@ public final class CodexSessionReader {
             let project = URL(fileURLWithPath: cwd).lastPathComponent.nonempty ?? "Unknown project"
             let fallback = state.agentName ?? (state.parentID == nil ? "Codex task" : "Sub-agent")
             let title = entry?.title.nonempty ?? fallback
-            let session = CodexSession(id: state.id, title: title, project: project, workingDirectory: cwd,
+            let session = AgentSession(id: state.id, title: title, project: project, workingDirectory: cwd,
                 status: state.status, startedAt: state.startedAt, updatedAt: state.updatedAt,
-                parentID: state.parentID, agentName: state.agentName)
+                parentID: state.parentID, agentName: state.agentName,
+                deepLink: URL(string: "codex://threads/\(state.id)"))
             if let previous = byID[state.id], previous.updatedAt >= session.updatedAt { continue }
             byID[state.id] = session
         }
@@ -142,7 +90,7 @@ public final class CodexSessionReader {
             if $0.status.isActive != $1.status.isActive { return $0.status.isActive }
             return $0.updatedAt > $1.updatedAt
         }
-        return CodexSessionSnapshot(sessions: sessions, scannedAt: now)
+        return AgentSessionSnapshot(sessions: sessions, scannedAt: now)
     }
 
     private func scan(file: URL, modified: Date) {

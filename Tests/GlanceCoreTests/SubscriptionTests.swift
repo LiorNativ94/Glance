@@ -151,4 +151,16 @@ final class SubscriptionTests: XCTestCase {
             XCTAssertEqual(plain.width, 112)
         }
     }
+
+    func testNamedWindowFollowsLimitingWindowFreshness() {
+        let now = Date()
+        let windows = [UsageWindow(id: "five_hour", title: "5-hour", usedPercent: 10, resetsAt: now.addingTimeInterval(3_600)),
+                       UsageWindow(id: "seven_day", title: "Weekly", usedPercent: 70, resetsAt: now.addingTimeInterval(86_400))]
+        let usage = SubscriptionUsage(plan: "Max", windows: windows, updatedAt: now)
+
+        XCTAssertEqual(usage.window(nil, now: now)?.id, "seven_day")
+        XCTAssertEqual(usage.window("five_hour", now: now)?.remainingFraction, 0.9)
+        XCTAssertEqual(usage.window("seven_day", now: now)?.remainingFraction, 0.3)
+        XCTAssertNil(usage.window("five_hour", now: now.addingTimeInterval(601)))
+    }
 }

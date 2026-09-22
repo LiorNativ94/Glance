@@ -147,14 +147,14 @@ struct Dashboard: View {
                     Spacer(); Image(systemName: "chevron.right")
                 }.font(.system(size: 11, weight: .medium)).contentShape(Rectangle())
             }.buttonStyle(.plain).accessibilityIdentifier("subscriptions")
-            if model.subscriptions.enabled.isEmpty && model.codexSessions.sessions.isEmpty {
+            if model.subscriptions.enabled.isEmpty && model.codexSessions.sessions.isEmpty && model.claudeSessions.sessions.isEmpty {
                 Text("Add Claude or Codex usage").font(.system(size: 10)).foregroundStyle(.secondary)
             }
             ForEach(SubscriptionProvider.allCases.filter {
-                model.subscriptions.enabled.contains($0) || ($0 == .codex && !model.codexSessions.sessions.isEmpty)
+                model.subscriptions.enabled.contains($0) || !model.sessions(for: $0).sessions.isEmpty
             }) { provider in
                 Button {
-                    if provider == .codex && !model.subscriptions.enabled.contains(provider) { model.providerTabs[provider] = "Sessions" }
+                    if !model.subscriptions.enabled.contains(provider) { model.providerTabs[provider] = "Sessions" }
                     model.openMetric(provider.rawValue)
                 } label: {
                     HStack(spacing: 8) {
@@ -164,9 +164,10 @@ struct Dashboard: View {
                             if let window = model.subscriptions.states[provider]?.usage?.limitingWindow() {
                                 Text("\(window.title) · \(window.resetDescription())").foregroundStyle(.secondary)
                             }
-                            if provider == .codex {
-                                Text(codexSessionSummary)
-                                    .foregroundStyle(model.codexSessions.attentionCount > 0 ? Color.orange : Color.secondary)
+                            let sessions = model.sessions(for: provider)
+                            if !sessions.sessions.isEmpty || provider == .codex {
+                                Text(sessionSummary(sessions))
+                                    .foregroundStyle(sessions.attentionCount > 0 ? Color.orange : Color.secondary)
                             }
                         }
                         Spacer()
@@ -179,9 +180,9 @@ struct Dashboard: View {
             }
         }
     }
-    private var codexSessionSummary: String {
-        let active = model.codexSessions.activeCount
-        let needs = model.codexSessions.attentionCount
+    private func sessionSummary(_ sessions: AgentSessionStore) -> String {
+        let active = sessions.activeCount
+        let needs = sessions.attentionCount
         let agents = "\(active) active agent\(active == 1 ? "" : "s")"
         return needs > 0 ? "\(agents) · \(needs) needs you" : agents
     }
@@ -227,6 +228,13 @@ struct Dashboard: View {
                         HStack(spacing: 8) {
                             symbol(metric.icon); Text(metric.name).font(.system(size: 11)).lineLimit(1)
                             Spacer()
+                            if metric.id == "claude" {
+                                Picker("Claude limit", selection: $model.claudeMenuLimit) {
+                                    ForEach(AppModel.MenuLimit.allCases, id: \.self) { Text($0.title).tag($0) }
+                                }.labelsHidden().pickerStyle(.menu).fixedSize().controlSize(.small)
+                                    .help("Which Claude limit the menu bar shows")
+                                    .accessibilityIdentifier("claude-menu-limit")
+                            }
                             Toggle(metric.name, isOn: Binding(get: { model.selected.contains(metric.id) },
                                                               set: { model.setSelected(metric.id, enabled: $0) }))
                                 .labelsHidden().toggleStyle(.checkbox)
@@ -350,6 +358,9 @@ struct Dashboard: View {
                             .font(.system(size: 11)).accessibilityIdentifier("alert-ai-threshold")
                         Text("Applies to Claude and Codex. For example, 20% remaining means 80% used.")
                             .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    case .claudeSessions:
+                        Text("When a Claude Code session finishes its turn or needs your input. Click the notification to open that session.")
+                            .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     case .codexSessions:
                         Text("When a Codex agent finishes, needs input, needs approval, or fails. Click the notification to open that exact task.")
                             .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -399,7 +410,7 @@ struct Dashboard: View {
             ScrollView {
                 SubscriptionCards(store: model.subscriptions, openDetails: { model.openMetric($0.rawValue) })
             }.scrollIndicators(.hidden).frame(height: 380)
-            Text("Updates every 5 minutes. Menu bar percentages show the lowest remaining limit. Add them in Customize…")
+            Text("Updates every 5 minutes. Menu bar percentages show the lowest remaining limit unless you pick Claude’s limit in Customize…")
                 .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
     }

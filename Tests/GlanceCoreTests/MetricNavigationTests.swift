@@ -230,7 +230,7 @@ final class MetricNavigationTests: XCTestCase {
         """
         try Data(root.utf8).write(to: directory.appendingPathComponent("root.jsonl"))
         try Data(agent.utf8).write(to: directory.appendingPathComponent("agent.jsonl"))
-        let sessionStore = CodexSessionStore(root: directory, catalogURL: nil,
+        let sessionStore = AgentSessionStore.codex(root: directory, catalogURL: nil,
                                              reader: CodexSessionReader(maxFiles: 5), startsTimer: false)
         let store = SubscriptionStore(defaults: defaults, startPolling: false, fetch: { _, _ in
             SubscriptionUsage(plan: "Pro", windows: [], accountID: "fixture")
@@ -252,6 +252,74 @@ final class MetricNavigationTests: XCTestCase {
         XCTAssertTrue(text.contains("Turing"), text)
         XCTAssertTrue(text.contains("Needs input"), text)
         XCTAssertTrue(text.contains("Session alerts"), text)
+    }
+    func testClaudeSessionsRenderInsideProviderDetails() throws {
+        _ = NSApplication.shared
+        let suite = "Glance.ClaudeSessions.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(suite)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { defaults.removePersistentDomain(forName: suite); try? FileManager.default.removeItem(at: directory) }
+        defaults.set(["claude"], forKey: "subscriptionProviders")
+        defaults.set(["claude"], forKey: "selectedMetrics")
+        let now = Int(Date.now.timeIntervalSince1970 * 1_000)
+        let pid = Int(ProcessInfo.processInfo.processIdentifier)
+        for (index, record) in [
+            ["sessionId": "one", "cwd": "/tmp/Glance", "name": "Menu bar limit", "status": "busy",
+             "entrypoint": "claude-desktop", "hostSessionId": "local_one"],
+            ["sessionId": "two", "cwd": "/tmp/Glance", "name": "Session list", "status": "waiting",
+             "waitingFor": "input needed", "entrypoint": "cli"]
+        ].enumerated() {
+            var object: [String: Any] = record
+            object["pid"] = pid; object["statusUpdatedAt"] = now
+            try JSONSerialization.data(withJSONObject: object).write(to: directory.appendingPathComponent("\(index).json"))
+        }
+        let sessionStore = AgentSessionStore.claude(root: directory, startsTimer: false)
+        let store = SubscriptionStore(defaults: defaults, startPolling: false, fetch: { _, _ in
+            SubscriptionUsage(plan: "Max", windows: [], accountID: "fixture")
+        })
+        let model = AppModel(defaults: defaults, subscriptions: store, claudeSessions: sessionStore)
+        model.providerTabs[.claude] = "Sessions"
+        let delegate = AppDelegate()
+        delegate.configureMenuBar(model: model)
+        defer { model.panelVisible = false; delegate.popover.close(); delegate.notch?.panel.orderOut(nil); NSStatusBar.system.removeStatusItem(delegate.statusItem) }
+        store.refreshAll(); settle()
+        let button = try XCTUnwrap(delegate.statusItem.button?.subviews.compactMap { $0 as? NSButton }.first)
+        button.performClick(nil); settle()
+        let view = try XCTUnwrap(delegate.popover.contentViewController?.view)
+        let text = try renderedText(view, name: "claude-sessions")
+        XCTAssertTrue(text.contains("2 active agents"), text)
+        XCTAssertTrue(text.contains("1 needs you"), text)
+        XCTAssertTrue(text.contains("Open Claude Code sessions"), text)
+        XCTAssertTrue(text.contains("Menu bar limit"), text)
+        XCTAssertTrue(text.contains("Terminal"), text)
+        XCTAssertTrue(text.contains("Needs input"), text)
+    }
+    func testClaudeMenuBarShowsChosenLimit() throws {
+        let suite = "Glance.ClaudeMenuLimit.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(["claude"], forKey: "subscriptionProviders")
+        let later = Date.now.addingTimeInterval(3_600)
+        let store = SubscriptionStore(defaults: defaults, startPolling: false, fetch: { _, _ in
+            SubscriptionUsage(plan: "Max", windows: [
+                UsageWindow(id: "five_hour", title: "5-hour", usedPercent: 10, resetsAt: later),
+                UsageWindow(id: "seven_day", title: "Weekly", usedPercent: 60, resetsAt: later)
+            ], accountID: "fixture")
+        })
+        let model = AppModel(defaults: defaults, subscriptions: store)
+        store.refreshAll(); settle()
+        XCTAssertEqual(model.claudeMenuLimit, .lowest)
+        XCTAssertEqual(model.value(for: "claude"), "40%")
+        var menuChanges = 0
+        model.onMenuChange = { menuChanges += 1 }
+        model.claudeMenuLimit = .fiveHour
+        XCTAssertEqual(model.value(for: "claude"), "90%")
+        XCTAssertGreaterThan(menuChanges, 0)
+        model.claudeMenuLimit = .weekly
+        XCTAssertEqual(model.value(for: "claude"), "40%")
+        model.claudeMenuLimit = .fiveHour
+        XCTAssertEqual(AppModel(defaults: defaults, subscriptions: store).claudeMenuLimit, .fiveHour)
     }
     func testDashboardAppearanceMatchesAcrossModesAndNavigation() throws {
         _ = NSApplication.shared

@@ -17,9 +17,15 @@ System readings stay local; optional Claude and Codex subscription connections f
 - **Claude and Codex usage:** reuse existing CLI sign-ins to see reported plan names, usage windows, and reset countdowns, with Claude and ChatGPT logos.
 - **System monitoring:** CPU and memory history graphs and used/free space for local drives.
 - **Dashboard layout:** reorder or hide CPU and memory, storage, keep awake, and AI subscription sections independently of icon choices.
-- **Quiet alerts:** optional notifications for Codex task completion or required input, low AI allowance, sustained memory pressure, and low disk space.
+- **Quiet alerts:** optional notifications for Claude and Codex task completion or required input, low AI allowance, sustained memory pressure, and low disk space.
 - **Keep awake:** timed or untimed sessions, +15m / +30m extensions, an optional display sleep override, and separately authorized temporary closed-lid mode.
 - **Launch at login:** optional, with no Dock icon.
+
+## Unreleased
+
+- Claude **Sessions** shows every Claude Code session open on this Mac, from the desktop app or a terminal, grouped by project.
+  Each shows Running, Needs input, or Ready; click a desktop session or its notification to open it in Claude.
+- Choose which Claude limit the menu bar or notch shows with the **Lowest / 5-hour / Weekly** picker next to **Claude remaining** in **Customize…**.
 
 ## New in v1.2.5
 
@@ -113,6 +119,7 @@ Each [GitHub Release](https://github.com/LiorNativ94/Glance/releases) includes a
 2. Open **Customize… → Show in → Menu bar / Notch** to choose where Glance appears.
 3. Open **Customize…** and select the metrics you want in that location.
 4. To add subscription limits, connect a provider in **AI subscriptions**, then select **Claude remaining** or **Codex remaining** in **Customize…**.
+   Icons show the lowest remaining limit; use the picker beside **Claude remaining** to show its 5-hour or weekly limit instead.
 
 Choose **System**, **Light**, or **Dark** under **Settings → Appearance**.
 The same appearance applies to the menu-bar and notch dashboards, including detail pages.

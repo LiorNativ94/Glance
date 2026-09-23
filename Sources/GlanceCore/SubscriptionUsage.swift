@@ -283,6 +283,7 @@ public struct ResetCreditInventory: Equatable, Sendable {
 public enum SubscriptionError: Error, LocalizedError {
     case signIn(SubscriptionProvider)
     case expired(SubscriptionProvider)
+    case notSaved
     case keychain
     case invalidResponse
     case rateLimited(Date)
@@ -291,8 +292,8 @@ public enum SubscriptionError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .signIn(let provider): return provider.signInHelp
-        case .expired(let provider):
-            return "Your \(provider.name) sign-in has expired. It renews the next time you use \(provider == .claude ? "Claude Code" : "Codex"); Glance then updates on its own."
+        case .expired(let provider): return "Your \(provider.name) sign-in has expired. Click Refresh to renew it."
+        case .notSaved: return "Glance renewed your Claude sign-in but couldn’t save it. Click Refresh to try again."
         case .keychain: return "Allow Keychain access by clicking Refresh to use your existing sign-in."
         case .invalidResponse: return "The provider did not return a supported usage reading."
         case .rateLimited: return "Too many requests. Glance will retry after the provider’s cooldown."

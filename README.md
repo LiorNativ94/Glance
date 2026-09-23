@@ -29,7 +29,7 @@ System readings stay local; optional Claude and Codex subscription connections f
   Updating or rebuilding Glance no longer asks for your Keychain password again; after one Refresh, background updates stay silent.
 - Allowance meters estimate whether you will run out before the reset, for example “At this pace, runs out in 1h 20m”.
 - A connection problem keeps the last reading visible, marked as last known after ten minutes; only a sign-in problem clears it.
-  An expired Claude sign-in now says it renews the next time you use Claude Code.
+- Glance renews an expired Claude sign-in on its own and saves it back for Claude Code, so usage stays live while you only use the Claude desktop app.
 - Choose which Claude limit the menu bar or notch shows with the **Lowest / 5-hour / Weekly** picker next to **Claude remaining** in **Customize…**.
 
 ## New in v1.2.5
@@ -205,6 +205,7 @@ For example, a provider with 70% session usage and 40% weekly usage displays **3
   Glance reads `~/.claude/.credentials.json` or the `Claude Code-credentials` Keychain item.
   The Keychain item is read with macOS's `/usr/bin/security` tool, which Claude Code itself uses, so its access survives Glance updates and rebuilds.
   Background refreshes use that tool only after it has answered a **Refresh** without a prompt.
+  When the sign-in expires, Glance renews it the way Claude Code does and saves it back to the same place, so both keep working.
   A custom `$CLAUDE_CONFIG_DIR` uses only that directory’s credentials file.
   The sign-in needs the `user:profile` scope; MCP-only credentials cannot supply subscription usage.
   macOS may request Keychain access when connecting or clicking **Refresh** if that tool is not already trusted.
@@ -214,9 +215,9 @@ Unavailable data displays a message instead of a zero-percent reading.
 Connection problems, provider errors, and cooldowns keep the last reading, which is marked as last known after ten minutes; only a sign-in problem clears it.
 Each meter estimates whether it will last until reset at the current average rate, once 3% of its window has passed.
 Expired reset times are marked as due until a fresh reading arrives.
-An expired Claude sign-in renews the next time you use Claude Code, and Glance picks it up on its next refresh.
+An expired Claude sign-in is renewed automatically; if its Keychain item still needs approval, click **Refresh** to renew it.
 For other sign-in problems, renew the sign-in in its owning CLI and click **Refresh**.
-Glance never modifies or refreshes the source credentials and never runs a coding session to collect usage.
+Glance changes the source credentials only to save a renewed Claude sign-in, and never runs a coding session to collect usage.
 These provider endpoints are undocumented and can change.
 This integration follows [CodexBar’s Codex](https://github.com/steipete/CodexBar/blob/main/docs/codex.md) and [Claude](https://github.com/steipete/CodexBar/blob/main/docs/claude.md) OAuth approach; it does not require CodexBar, import browser cookies, or provide billing history.
 
@@ -377,6 +378,7 @@ Metric selections and the optional cup indicator are stored in macOS user defaul
 Notch visibility, dashboard layout, alert thresholds, enabled alert rules, and enabled subscription providers are also stored in user defaults.
 Subscription connections are off by default and read local credentials only for enabled providers.
 Access tokens are sent only to the corresponding provider’s fixed HTTPS usage endpoint; redirects are refused.
+An expired Claude sign-in’s refresh token is sent only to Claude’s fixed HTTPS token endpoint, and the renewed sign-in replaces the stored one where Claude Code keeps it.
 Glance stores no copies of credentials or usage readings on disk, and background Keychain reads never prompt.
 The only related preference is whether the `security` tool has answered silently before.
 Closed-lid sessions use temporary local heartbeat and status files.

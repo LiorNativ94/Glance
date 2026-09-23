@@ -10,7 +10,7 @@ Update the same entry when rebuilding an existing tag.
 - Added Claude Sessions grouped by project with live status, desktop links, and optional alerts.
 - Added a Lowest / 5-hour / Weekly picker for the Claude percentage in the menu bar or notch.
 - Reduced repeat Claude Keychain prompts after Glance rebuilds by reading the sign-in through macOS's security tool.
-- Added allowance pace estimates, retained the last reading during temporary failures, and clarified expired sign-ins.
+- Added allowance pace estimates, retained the last reading during temporary failures, and renewed expired Claude sign-ins automatically.
 
 ## v1.2.5
 

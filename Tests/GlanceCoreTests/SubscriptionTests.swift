@@ -173,8 +173,46 @@ final class SubscriptionTests: XCTestCase {
         {"claudeAiOauth":{"accessToken":"test-only","expiresAt":1,"scopes":["user:profile"]}}
         """), provider: .claude)) { error in
             guard case SubscriptionError.expired(.claude) = error else { return XCTFail("Expected expiry, got \(error)") }
-            XCTAssertTrue(error.localizedDescription.contains("next time you use Claude Code"))
+            XCTAssertTrue(error.localizedDescription.contains("Click Refresh to renew"))
         }
+    }
+
+    func testExpiredClaudeTokenWithRefreshTokenIsRenewable() throws {
+        let stored = data("""
+        {"mcpOAuth":{"server":{"token":"keep"}},"claudeAiOauth":{"accessToken":"old","refreshToken":"refresh-old","expiresAt":1,\
+        "scopes":["user:inference","user:profile"],"subscriptionType":"team","rateLimitTier":"tier"}}
+        """)
+        let credentials = try SubscriptionCredentials.parse(stored, provider: .claude)
+        XCTAssertTrue(credentials.expired)
+        XCTAssertEqual(credentials.document, stored)
+
+        let request = try XCTUnwrap(SubscriptionClient.renewalRequest(stored))
+        XCTAssertEqual(request.url?.absoluteString, "https://platform.claude.com/v1/oauth/token")
+        XCTAssertEqual(request.httpMethod, "POST")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: String])
+        XCTAssertEqual(body, ["grant_type": "refresh_token", "refresh_token": "refresh-old",
+                              "client_id": "9d1c250a-e61b-44d9-88ed-5944d1962f5e", "scope": "user:inference user:profile"])
+
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let renewed = try SubscriptionCredentials.renewed(stored, response: data("""
+        {"access_token":"new","refresh_token":"refresh-new","expires_in":28800,"scope":"user:inference user:profile"}
+        """), now: now)
+        let root = try XCTUnwrap(JSONSerialization.jsonObject(with: renewed) as? [String: Any])
+        XCTAssertEqual((root["mcpOAuth"] as? [String: Any])?["server"] as? [String: String], ["token": "keep"])
+        let oauth = try XCTUnwrap(root["claudeAiOauth"] as? [String: Any])
+        XCTAssertEqual(oauth["accessToken"] as? String, "new")
+        XCTAssertEqual(oauth["refreshToken"] as? String, "refresh-new")
+        XCTAssertEqual(oauth["expiresAt"] as? Double, 1_800_028_800_000)
+        XCTAssertEqual(oauth["rateLimitTier"] as? String, "tier")
+        let fresh = try SubscriptionCredentials.parse(renewed, provider: .claude, now: now)
+        XCTAssertFalse(fresh.expired)
+        XCTAssertEqual(fresh.accessToken, "new")
+        XCTAssertEqual(fresh.plan, "team")
+
+        let kept = try SubscriptionCredentials.renewed(stored, response: data("{\"access_token\":\"new\",\"expires_in\":60}"), now: now)
+        let keptOAuth = try XCTUnwrap((JSONSerialization.jsonObject(with: kept) as? [String: Any])?["claudeAiOauth"] as? [String: Any])
+        XCTAssertEqual(keptOAuth["refreshToken"] as? String, "refresh-old", "A reply without a new refresh token keeps the old one")
+        XCTAssertThrowsError(try SubscriptionCredentials.renewed(stored, response: data("{\"error\":\"invalid_grant\"}")))
     }
 
     func testSecurityToolOutputDropsTrailingNewline() {

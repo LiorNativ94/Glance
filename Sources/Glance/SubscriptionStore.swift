@@ -5,9 +5,14 @@ import Security
 import LocalAuthentication
 
 struct SubscriptionCredentials {
+    enum Source: Equatable { case file(URL), keychain(silent: Bool) }
     let accessToken: String
     let accountID: String?
     let plan: String?
+    /// Claude only: the whole stored sign-in, kept so a renewal can write it back with every other field intact.
+    var document: Data? = nil
+    var source: Source? = nil
+    var expired = false
 
     static func parse(_ data: Data, provider: SubscriptionProvider, now: Date = .now) throws -> Self {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -18,16 +23,35 @@ struct SubscriptionCredentials {
         guard let token = values?[tokenKey] as? String, !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw SubscriptionError.signIn(provider)
         }
-        if provider == .claude {
-            if let expiry = values?["expiresAt"] as? Double, expiry / 1000 <= now.timeIntervalSince1970 {
-                throw SubscriptionError.expired(provider)
-            }
-            if let scopes = values?["scopes"] as? [String], !scopes.contains("user:profile") {
-                throw SubscriptionError.signIn(provider)
-            }
+        guard provider == .claude else {
+            return Self(accessToken: token, accountID: values?["account_id"] as? String, plan: values?["subscriptionType"] as? String)
         }
+        if let scopes = values?["scopes"] as? [String], !scopes.contains("user:profile") {
+            throw SubscriptionError.signIn(provider)
+        }
+        let expired = (values?["expiresAt"] as? Double).map { $0 / 1000 <= now.timeIntervalSince1970 } ?? false
+        if expired && (values?["refreshToken"] as? String ?? "").isEmpty { throw SubscriptionError.expired(provider) }
         return Self(accessToken: token, accountID: values?["account_id"] as? String,
-                    plan: values?["subscriptionType"] as? String)
+                    plan: values?["subscriptionType"] as? String, document: data, expired: expired)
+    }
+
+    /// The stored sign-in with renewed tokens, keeping every other field Claude Code saved.
+    static func renewed(_ document: Data, response: Data, now: Date = .now) throws -> Data {
+        guard var root = try? JSONSerialization.jsonObject(with: document) as? [String: Any],
+              var oauth = root["claudeAiOauth"] as? [String: Any],
+              let reply = try? JSONSerialization.jsonObject(with: response) as? [String: Any],
+              let token = reply["access_token"] as? String, !token.isEmpty,
+              let expiresIn = (reply["expires_in"] as? NSNumber)?.doubleValue else { throw SubscriptionError.invalidResponse }
+        func milliseconds(_ seconds: Double) -> Int64 { Int64((now.timeIntervalSince1970 + seconds) * 1000) }
+        oauth["accessToken"] = token
+        oauth["expiresAt"] = milliseconds(expiresIn)
+        if let refresh = reply["refresh_token"] as? String, !refresh.isEmpty { oauth["refreshToken"] = refresh }
+        if let seconds = (reply["refresh_token_expires_in"] as? NSNumber)?.doubleValue {
+            oauth["refreshTokenExpiresAt"] = milliseconds(seconds)
+        }
+        if let scope = reply["scope"] as? String, !scope.isEmpty { oauth["scopes"] = scope.split(separator: " ").map(String.init) }
+        root["claudeAiOauth"] = oauth
+        return try JSONSerialization.data(withJSONObject: root, options: .withoutEscapingSlashes)
     }
 
     static func load(_ provider: SubscriptionProvider, allowInteraction: Bool) throws -> Self {
@@ -38,7 +62,8 @@ struct SubscriptionCredentials {
             ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(provider == .claude ? ".claude" : ".codex")
         let file = home.appendingPathComponent(provider == .claude ? ".credentials.json" : "auth.json")
         if FileManager.default.fileExists(atPath: file.path) {
-            if let data = try? Data(contentsOf: file), let credentials = try? parse(data, provider: provider) {
+            if let data = try? Data(contentsOf: file), var credentials = try? parse(data, provider: provider) {
+                credentials.source = .file(file)
                 return credentials
             }
         }
@@ -50,8 +75,11 @@ struct SubscriptionCredentials {
         if allowInteraction || defaults.bool(forKey: securityToolTrustedKey) {
             let started = Date()
             if let data = readWithSecurityTool(timeout: allowInteraction ? 60 : 2) {
-                if Date().timeIntervalSince(started) < 2 { defaults.set(true, forKey: securityToolTrustedKey) }
-                return try parse(data, provider: provider)
+                let silent = Date().timeIntervalSince(started) < 2
+                if silent { defaults.set(true, forKey: securityToolTrustedKey) }
+                var credentials = try parse(data, provider: provider)
+                credentials.source = .keychain(silent: silent)
+                return credentials
             }
             if !allowInteraction { defaults.set(false, forKey: securityToolTrustedKey) }
         }
@@ -69,23 +97,72 @@ struct SubscriptionCredentials {
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         if status == errSecItemNotFound { throw SubscriptionError.signIn(provider) }
         guard status == errSecSuccess, let data = result as? Data else { throw SubscriptionError.keychain }
-        return try parse(data, provider: provider)
+        var credentials = try parse(data, provider: provider)
+        credentials.source = .keychain(silent: false)
+        return credentials
+    }
+
+    /// Saves a renewed sign-in where it was read, the same way Claude Code saves it, so both keep working.
+    static func store(_ document: Data, to source: Source) throws {
+        switch source {
+        case .file(let url):
+            let temporary = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString)")
+            guard FileManager.default.createFile(atPath: temporary.path, contents: document,
+                                                 attributes: [.posixPermissions: 0o600]) else { throw SubscriptionError.notSaved }
+            do { _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary) } catch {
+                try? FileManager.default.removeItem(at: temporary)
+                throw SubscriptionError.notSaved
+            }
+        case .keychain:
+            // Hex data on stdin keeps tokens out of the process list; the argv form covers items too long for one line.
+            let hex = document.map { String(format: "%02x", $0) }.joined()
+            let account = keychainAccount() ?? NSUserName()
+            let arguments = ["add-generic-password", "-U", "-a", account, "-s", "Claude Code-credentials", "-X", hex]
+            let line = "add-generic-password -U -a \"\(account)\" -s \"Claude Code-credentials\" -X \"\(hex)\"\n"
+            let saved = line.utf8.count <= 4032
+                ? runSecurityTool(["-i"], input: Data(line.utf8), timeout: 10)
+                : runSecurityTool(arguments, timeout: 10)
+            guard saved != nil else { throw SubscriptionError.notSaved }
+        }
+    }
+
+    /// The item's account name; attributes are readable without the item's access grant.
+    private static func keychainAccount() -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "Claude Code-credentials",
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess else { return nil }
+        return (result as? [String: Any])?[kSecAttrAccount as String] as? String
     }
 
     static let securityToolTrustedKey = "claudeSecurityToolTrusted"
 
     /// Output of `security find-generic-password -w`, or nil on failure or timeout.
     static func readWithSecurityTool(timeout: TimeInterval) -> Data? {
+        runSecurityTool(["find-generic-password", "-s", "Claude Code-credentials", "-w"], timeout: timeout).map(trimmingNewlines)
+    }
+
+    /// Standard output of a successful `/usr/bin/security` run, or nil on failure or timeout.
+    private static func runSecurityTool(_ arguments: [String], input: Data? = nil, timeout: TimeInterval) -> Data? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        process.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
+        process.arguments = arguments
         let output = Pipe()
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
-        process.standardInput = FileHandle.nullDevice
+        let stdin = input.map { _ in Pipe() }
+        process.standardInput = stdin ?? FileHandle.nullDevice
         let exited = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in exited.signal() }
         do { try process.run() } catch { return nil }
+        if let stdin, let input {
+            try? stdin.fileHandleForWriting.write(contentsOf: input)
+            try? stdin.fileHandleForWriting.close()
+        }
         // Drain concurrently so a large item cannot fill the pipe and stall the tool.
         var data = Data()
         let drained = DispatchSemaphore(value: 0)
@@ -99,7 +176,7 @@ struct SubscriptionCredentials {
         }
         drained.wait()
         guard process.terminationReason == .exit, process.terminationStatus == 0 else { return nil }
-        return trimmingNewlines(data)
+        return data
     }
 
     static func trimmingNewlines(_ data: Data) -> Data {
@@ -138,10 +215,16 @@ final class SubscriptionClient: NSObject, URLSessionTaskDelegate, @unchecked Sen
     }
 
     func fetch(_ provider: SubscriptionProvider, allowInteraction: Bool) async throws -> SubscriptionUsage {
-        let credentials = try await Task.detached(priority: .utility) {
+        var credentials = try await Task.detached(priority: .utility) {
             try SubscriptionCredentials.load(provider, allowInteraction: allowInteraction)
         }.value
         try Task.checkCancellation()
+        // The Claude desktop app keeps its own sign-in, so only the claude command renews this one; Glance renews it
+        // too. Saving to a Keychain item that prompted on read would prompt again, so that waits for a click.
+        if credentials.expired {
+            guard allowInteraction || credentials.source != .keychain(silent: false) else { throw SubscriptionError.expired(provider) }
+            credentials = try await renew(credentials)
+        }
         let (data, response) = try await session.data(for: Self.request(provider, credentials: credentials))
         guard let response = response as? HTTPURLResponse else { throw SubscriptionError.invalidResponse }
         try Self.validate(response, provider: provider)
@@ -160,6 +243,38 @@ final class SubscriptionClient: NSObject, URLSessionTaskDelegate, @unchecked Sen
         }
         return SubscriptionUsage(plan: usage.plan, windows: usage.windows, updatedAt: usage.updatedAt,
                                  accountID: identity.accountID, email: identity.email)
+    }
+
+    private func renew(_ credentials: SubscriptionCredentials) async throws -> SubscriptionCredentials {
+        guard let document = credentials.document, let source = credentials.source,
+              let request = Self.renewalRequest(document) else { throw SubscriptionError.expired(.claude) }
+        let (data, response) = try await session.data(for: request)
+        guard let response = response as? HTTPURLResponse else { throw SubscriptionError.invalidResponse }
+        // A rejected refresh token (invalid_grant) means signing in again.
+        if response.statusCode == 400 { throw SubscriptionError.signIn(.claude) }
+        try Self.validate(response, provider: .claude)
+        let renewed = try SubscriptionCredentials.renewed(document, response: data)
+        try await Task.detached(priority: .utility) { try SubscriptionCredentials.store(renewed, to: source) }.value
+        var result = try SubscriptionCredentials.parse(renewed, provider: .claude)
+        result.source = source
+        return result
+    }
+
+    /// Claude Code's own refresh request, so the renewed sign-in stays valid for Claude Code as well.
+    static func renewalRequest(_ document: Data) -> URLRequest? {
+        guard let root = try? JSONSerialization.jsonObject(with: document) as? [String: Any],
+              let oauth = root["claudeAiOauth"] as? [String: Any],
+              let refreshToken = oauth["refreshToken"] as? String, !refreshToken.isEmpty else { return nil }
+        var body: [String: Any] = ["grant_type": "refresh_token", "refresh_token": refreshToken,
+                                   "client_id": "9d1c250a-e61b-44d9-88ed-5944d1962f5e"]
+        if let scopes = oauth["scopes"] as? [String], !scopes.isEmpty { body["scope"] = scopes.joined(separator: " ") }
+        var request = URLRequest(url: URL(string: "https://platform.claude.com/v1/oauth/token")!, cachePolicy: .reloadIgnoringLocalCacheData)
+        request.httpMethod = "POST"
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Glance", forHTTPHeaderField: "User-Agent")
+        return request
     }
 
     static func profileRequest(credentials: SubscriptionCredentials) -> URLRequest {

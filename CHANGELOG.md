@@ -5,11 +5,12 @@ Update the same entry when rebuilding an existing tag.
 
 ## Unreleased
 
-- Added a Claude **Sessions** tab listing open Claude Code sessions by project, with live Running, Needs input, and Ready states.
-- Added Claude session alerts for finished turns and questions; desktop sessions open directly from a row or notification.
-- Added a Lowest / 5-hour / Weekly picker in Customize for the Claude percentage shown in the menu bar or notch.
-- Stopped repeat Keychain password prompts for Claude after Glance updates by reading the sign-in the way Claude Code does.
-- Added pace estimates to allowance meters, kept the last reading through connection problems, and explained expired sign-ins.
+## v1.2.6
+
+- Added Claude Sessions grouped by project with live status, desktop links, and optional alerts.
+- Added a Lowest / 5-hour / Weekly picker for the Claude percentage in the menu bar or notch.
+- Reduced repeat Claude Keychain prompts after Glance rebuilds by reading the sign-in through macOS's security tool.
+- Added allowance pace estimates, retained the last reading during temporary failures, and clarified expired sign-ins.
 
 ## v1.2.5
 

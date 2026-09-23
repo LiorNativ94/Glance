@@ -25,6 +25,11 @@ System readings stay local; optional Claude and Codex subscription connections f
 
 - Claude **Sessions** shows every Claude Code session open on this Mac, from the desktop app or a terminal, grouped by project.
   Each shows Running, Needs input, or Ready; click a desktop session or its notification to open it in Claude.
+- Claude usage reads your sign-in through macOS's `security` tool, the same way Claude Code does.
+  Updating or rebuilding Glance no longer asks for your Keychain password again; after one Refresh, background updates stay silent.
+- Allowance meters estimate whether you will run out before the reset, for example “At this pace, runs out in 1h 20m”.
+- A connection problem keeps the last reading visible, marked as last known after ten minutes; only a sign-in problem clears it.
+  An expired Claude sign-in now says it renews the next time you use Claude Code.
 - Choose which Claude limit the menu bar or notch shows with the **Lowest / 5-hour / Weekly** picker next to **Claude remaining** in **Customize…**.
 
 ## New in v1.2.5
@@ -198,14 +203,19 @@ For example, a provider with 70% session usage and 40% weekly usage displays **3
   API-key-only and Keychain-only Codex sign-ins are not supported by this connection.
 - **Claude:** sign in with Claude Code.
   Glance reads `~/.claude/.credentials.json` or the `Claude Code-credentials` Keychain item.
+  The Keychain item is read with macOS's `/usr/bin/security` tool, which Claude Code itself uses, so its access survives Glance updates and rebuilds.
+  Background refreshes use that tool only after it has answered a **Refresh** without a prompt.
   A custom `$CLAUDE_CONFIG_DIR` uses only that directory’s credentials file.
   The sign-in needs the `user:profile` scope; MCP-only credentials cannot supply subscription usage.
-  macOS may request Keychain access when connecting or clicking **Refresh**.
+  macOS may request Keychain access when connecting or clicking **Refresh** if that tool is not already trusted.
 
 Usage refreshes every five minutes and after wake; **Refresh** requests an update immediately unless the provider has imposed a cooldown.
 Unavailable data displays a message instead of a zero-percent reading.
+Connection problems, provider errors, and cooldowns keep the last reading, which is marked as last known after ten minutes; only a sign-in problem clears it.
+Each meter estimates whether it will last until reset at the current average rate, once 3% of its window has passed.
 Expired reset times are marked as due until a fresh reading arrives.
-If a sign-in expires, renew it in its owning CLI and click **Refresh**.
+An expired Claude sign-in renews the next time you use Claude Code, and Glance picks it up on its next refresh.
+For other sign-in problems, renew the sign-in in its owning CLI and click **Refresh**.
 Glance never modifies or refreshes the source credentials and never runs a coding session to collect usage.
 These provider endpoints are undocumented and can change.
 This integration follows [CodexBar’s Codex](https://github.com/steipete/CodexBar/blob/main/docs/codex.md) and [Claude](https://github.com/steipete/CodexBar/blob/main/docs/claude.md) OAuth approach; it does not require CodexBar, import browser cookies, or provide billing history.
@@ -271,7 +281,7 @@ codesign --verify --deep --strict dist/Glance.app
 ```
 
 Tests cover reading calculations, metric selections, dashboard persistence, alert thresholds and repeat suppression, permission denial, timer extensions, sleep-session policy, the rendered Settings version, and visible popover positioning during menu bar customization.
-Subscription tests cover provider response formats, account-scoped requests, missing and expired credentials, cooldowns, and disconnecting during a refresh.
+Subscription tests cover provider response formats, account-scoped requests, missing and expired credentials, cooldowns, pace estimates, readings kept through temporary failures, and disconnecting during a refresh.
 Native notch tests verify camera clearance, selection-based sizing, exclusive display modes, expansion, dismissal, and synthetic subscription readings.
 The AppKit tests open a temporary menu bar item and popover, so run them in a logged-in macOS desktop session.
 Power-controller tests briefly exercise normal keep-awake assertions; they do not authorize closed-lid mode.
@@ -368,6 +378,7 @@ Notch visibility, dashboard layout, alert thresholds, enabled alert rules, and e
 Subscription connections are off by default and read local credentials only for enabled providers.
 Access tokens are sent only to the corresponding provider’s fixed HTTPS usage endpoint; redirects are refused.
 Glance stores no copies of credentials or usage readings on disk, and background Keychain reads never prompt.
+The only related preference is whether the `security` tool has answered silently before.
 Closed-lid sessions use temporary local heartbeat and status files.
 Administrator authorization is handled by macOS; the app does not store an administrator password.
 

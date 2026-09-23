@@ -98,14 +98,15 @@ struct SubscriptionDetails: View {
         Group {
             if let usage {
                 let primary = usage.limitingWindow() ?? usage.windows.filter(\.isGeneral).min { $0.remainingFraction < $1.remainingFraction }
+                let current = usage.limitingWindow() != nil
                 if let primary {
-                    allowanceHero(primary, current: usage.limitingWindow() != nil)
-                    ForEach(usage.windows.filter { $0.isGeneral && $0.id != primary.id }) { allowance($0) }
+                    allowanceHero(primary, current: current)
+                    ForEach(usage.windows.filter { $0.isGeneral && $0.id != primary.id }) { allowance($0, current: current) }
                 }
                 if usage.windows.isEmpty { note("This account did not report any allowance windows.") }
                 if usage.windows.contains(where: { !$0.isGeneral }) {
                     DisclosureGroup("Model & feature limits", isExpanded: $showLimits) {
-                        VStack(spacing: 14) { ForEach(usage.windows.filter { !$0.isGeneral }) { allowance($0) } }.padding(.top, 10)
+                        VStack(spacing: 14) { ForEach(usage.windows.filter { !$0.isGeneral }) { allowance($0, current: current) } }.padding(.top, 10)
                     }.font(.system(size: 12, weight: .medium))
                 }
                 if provider == .codex {
@@ -147,12 +148,13 @@ struct SubscriptionDetails: View {
             ProgressView(value: window.usedPercent, total: 100).tint(color)
             Text(window.resetDescription()).font(.system(size: 12)).foregroundStyle(.secondary)
                 .help(window.resetsAt?.formatted(date: .complete, time: .shortened) ?? "Reset time unavailable")
+            if current { pace(window, size: 12) }
         }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
             .background(color.opacity(0.07), in: RoundedRectangle(cornerRadius: 12))
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("primary-allowance")
     }
-    private func allowance(_ window: UsageWindow) -> some View {
+    private func allowance(_ window: UsageWindow, current: Bool) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(window.title).fontWeight(.medium)
@@ -162,7 +164,14 @@ struct SubscriptionDetails: View {
             ProgressView(value: window.usedPercent, total: 100).tint(SubscriptionPresentation.allowanceColor(window))
             Text(window.resetDescription()).font(.system(size: 11)).foregroundStyle(.secondary)
                 .help(window.resetsAt?.formatted(date: .complete, time: .shortened) ?? "Reset time unavailable")
+            if current { pace(window, size: 11) }
         }.accessibilityElement(children: .combine)
+    }
+    @ViewBuilder private func pace(_ window: UsageWindow, size: CGFloat) -> some View {
+        if let pace = window.pace() {
+            Text(pace.text).font(.system(size: size)).foregroundStyle(pace.runsOutEarly ? Color.orange : Color.secondary)
+                .help("Estimate assuming you keep using it at the same average rate as so far in this window")
+        }
     }
     private var resetInventory: some View {
         VStack(alignment: .leading, spacing: 6) {

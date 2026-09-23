@@ -152,6 +152,63 @@ final class SubscriptionTests: XCTestCase {
         }
     }
 
+    func testPaceProjectsCurrentRateAgainstReset() {
+        let now = Date()
+        func window(used: Double, resetsIn: TimeInterval, duration: TimeInterval? = 18_000) -> UsageWindow {
+            UsageWindow(id: "five_hour", title: "5-hour", usedPercent: used, resetsAt: now.addingTimeInterval(resetsIn), durationSeconds: duration)
+        }
+        let fast = window(used: 50, resetsIn: 14_400).pace(now: now)
+        XCTAssertEqual(fast?.text, "At this pace, runs out in 1h 0m")
+        XCTAssertEqual(fast?.runsOutEarly, true)
+        XCTAssertEqual(window(used: 10, resetsIn: 14_400).pace(now: now)?.runsOutEarly, false)
+        XCTAssertEqual(window(used: 0, resetsIn: 14_400).pace(now: now)?.text, "On pace to last until reset")
+        XCTAssertNil(window(used: 40, resetsIn: 17_700).pace(now: now), "Too early in the window to judge")
+        XCTAssertNil(window(used: 100, resetsIn: 14_400).pace(now: now))
+        XCTAssertNil(window(used: 50, resetsIn: -60).pace(now: now))
+        XCTAssertNil(window(used: 50, resetsIn: 14_400, duration: nil).pace(now: now))
+    }
+
+    func testExpiredClaudeTokenExplainsRenewal() {
+        XCTAssertThrowsError(try SubscriptionCredentials.parse(data("""
+        {"claudeAiOauth":{"accessToken":"test-only","expiresAt":1,"scopes":["user:profile"]}}
+        """), provider: .claude)) { error in
+            guard case SubscriptionError.expired(.claude) = error else { return XCTFail("Expected expiry, got \(error)") }
+            XCTAssertTrue(error.localizedDescription.contains("next time you use Claude Code"))
+        }
+    }
+
+    func testSecurityToolOutputDropsTrailingNewline() {
+        XCTAssertEqual(SubscriptionCredentials.trimmingNewlines(data("{\"a\":1}\n")), data("{\"a\":1}"))
+        XCTAssertEqual(SubscriptionCredentials.trimmingNewlines(data("{}\r\n")), data("{}"))
+    }
+
+    @MainActor func testTemporaryFailureKeepsReadingButSignInFailureClearsIt() async throws {
+        let suite = "Glance.SubscriptionTests.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let reading = SubscriptionUsage(plan: "max", windows: [UsageWindow(id: "five_hour", title: "5-hour", usedPercent: 30, resetsAt: nil)])
+        var results: [Result<SubscriptionUsage, Error>] = [
+            .success(reading), .failure(URLError(.notConnectedToInternet)), .failure(SubscriptionError.expired(.claude)),
+            .failure(SubscriptionError.server(503)), .failure(SubscriptionError.signIn(.claude))]
+        let store = SubscriptionStore(defaults: defaults, startPolling: false, fetch: { _, _ in try results.removeFirst().get() })
+        func refresh() async {
+            store.refresh(.claude)
+            for _ in 0..<10 { await Task.yield() }
+        }
+        store.setEnabled(.claude, true)
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(store.states[.claude]?.usage, reading)
+        for _ in 0..<3 {
+            await refresh()
+            XCTAssertEqual(store.states[.claude]?.usage, reading)
+            XCTAssertNotNil(store.states[.claude]?.error)
+            XCTAssertEqual(store.states[.claude]?.refreshing, false)
+        }
+        await refresh()
+        XCTAssertNil(store.states[.claude]?.usage)
+        XCTAssertEqual(store.states[.claude]?.error, SubscriptionProvider.claude.signInHelp)
+    }
+
     func testNamedWindowFollowsLimitingWindowFreshness() {
         let now = Date()
         let windows = [UsageWindow(id: "five_hour", title: "5-hour", usedPercent: 10, resetsAt: now.addingTimeInterval(3_600)),

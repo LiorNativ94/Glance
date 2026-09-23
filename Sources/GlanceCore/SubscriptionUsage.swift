@@ -39,11 +39,26 @@ public struct UsageWindow: Identifiable, Equatable, Codable, Sendable {
         guard let resetsAt else { return "Reset time unavailable" }
         let seconds = resetsAt.timeIntervalSince(now)
         guard seconds > 0 else { return "Reset due · refresh to update" }
+        return "Resets in " + Self.span(seconds)
+    }
+
+    /// A straight-line projection of use so far; nil until 3% of the window has passed, when early bursts mislead.
+    public func pace(now: Date = .now) -> (text: String, runsOutEarly: Bool)? {
+        guard let resetsAt, let duration = durationSeconds, duration > 0, usedPercent < 100 else { return nil }
+        let left = resetsAt.timeIntervalSince(now)
+        let elapsed = duration - left
+        guard left > 0, elapsed >= duration * 0.03 else { return nil }
+        let runsOutIn = (100 - usedPercent) / (usedPercent / elapsed)
+        guard runsOutIn < left else { return ("On pace to last until reset", false) }
+        return ("At this pace, runs out in " + Self.span(runsOutIn), true)
+    }
+
+    private static func span(_ seconds: TimeInterval) -> String {
         let minutes = Int(ceil(min(seconds, 315_360_000) / 60))
-        if minutes < 60 { return "Resets in \(minutes)m" }
+        if minutes < 60 { return "\(minutes)m" }
         let hours = minutes / 60
-        if hours < 24 { return "Resets in \(hours)h \(minutes % 60)m" }
-        return "Resets in \(hours / 24)d \(hours % 24)h"
+        if hours < 24 { return "\(hours)h \(minutes % 60)m" }
+        return "\(hours / 24)d \(hours % 24)h"
     }
 }
 
@@ -267,6 +282,7 @@ public struct ResetCreditInventory: Equatable, Sendable {
 
 public enum SubscriptionError: Error, LocalizedError {
     case signIn(SubscriptionProvider)
+    case expired(SubscriptionProvider)
     case keychain
     case invalidResponse
     case rateLimited(Date)
@@ -275,6 +291,8 @@ public enum SubscriptionError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .signIn(let provider): return provider.signInHelp
+        case .expired(let provider):
+            return "Your \(provider.name) sign-in has expired. It renews the next time you use \(provider == .claude ? "Claude Code" : "Codex"); Glance then updates on its own."
         case .keychain: return "Allow Keychain access by clicking Refresh to use your existing sign-in."
         case .invalidResponse: return "The provider did not return a supported usage reading."
         case .rateLimited: return "Too many requests. Glance will retry after the provider’s cooldown."

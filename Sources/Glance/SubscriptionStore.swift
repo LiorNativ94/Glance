@@ -20,7 +20,7 @@ struct SubscriptionCredentials {
         }
         if provider == .claude {
             if let expiry = values?["expiresAt"] as? Double, expiry / 1000 <= now.timeIntervalSince1970 {
-                throw SubscriptionError.signIn(provider)
+                throw SubscriptionError.expired(provider)
             }
             if let scopes = values?["scopes"] as? [String], !scopes.contains("user:profile") {
                 throw SubscriptionError.signIn(provider)
@@ -43,6 +43,18 @@ struct SubscriptionCredentials {
             }
         }
         guard provider == .claude, customHome == nil else { throw SubscriptionError.signIn(provider) }
+        // Claude Code reads and writes this item with /usr/bin/security, so that tool stays trusted while
+        // Glance's own grant breaks whenever a rebuild changes its signature. Background reads use the tool
+        // only after a click proved it answers without a prompt, because it ignores no-UI flags.
+        let defaults = UserDefaults.standard
+        if allowInteraction || defaults.bool(forKey: securityToolTrustedKey) {
+            let started = Date()
+            if let data = readWithSecurityTool(timeout: allowInteraction ? 60 : 2) {
+                if Date().timeIntervalSince(started) < 2 { defaults.set(true, forKey: securityToolTrustedKey) }
+                return try parse(data, provider: provider)
+            }
+            if !allowInteraction { defaults.set(false, forKey: securityToolTrustedKey) }
+        }
         // Interactive reads only follow a connect/refresh click. Background polling never prompts.
         let context = LAContext()
         context.interactionNotAllowed = !allowInteraction
@@ -58,6 +70,42 @@ struct SubscriptionCredentials {
         if status == errSecItemNotFound { throw SubscriptionError.signIn(provider) }
         guard status == errSecSuccess, let data = result as? Data else { throw SubscriptionError.keychain }
         return try parse(data, provider: provider)
+    }
+
+    static let securityToolTrustedKey = "claudeSecurityToolTrusted"
+
+    /// Output of `security find-generic-password -w`, or nil on failure or timeout.
+    static func readWithSecurityTool(timeout: TimeInterval) -> Data? {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = FileHandle.nullDevice
+        process.standardInput = FileHandle.nullDevice
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
+        do { try process.run() } catch { return nil }
+        // Drain concurrently so a large item cannot fill the pipe and stall the tool.
+        var data = Data()
+        let drained = DispatchSemaphore(value: 0)
+        DispatchQueue.global(qos: .utility).async {
+            data = output.fileHandleForReading.readDataToEndOfFile()
+            drained.signal()
+        }
+        if exited.wait(timeout: .now() + timeout) == .timedOut {
+            process.terminate()
+            exited.wait()
+        }
+        drained.wait()
+        guard process.terminationReason == .exit, process.terminationStatus == 0 else { return nil }
+        return trimmingNewlines(data)
+    }
+
+    static func trimmingNewlines(_ data: Data) -> Data {
+        var data = data
+        while let last = data.last, last == 0x0A || last == 0x0D { data.removeLast() }
+        return data
     }
 }
 
@@ -265,9 +313,16 @@ final class SubscriptionStore: ObservableObject {
                     if case SubscriptionError.rateLimited(let date) = error { self.resetRetryAfter = date }
                 }
             case .failure(let error):
-                // Clear old readings on failure so a changed account cannot inherit another account's meters.
-                self.states[provider] = State(error: (error as? SubscriptionError)?.errorDescription
+                // Keep the last reading through temporary failures; its age marks it as last known after ten minutes.
+                // Sign-in failures clear it so a changed account cannot inherit another account's meters.
+                var state = State(error: (error as? SubscriptionError)?.errorDescription
                     ?? "Couldn’t reach \(provider.name). Check your connection and refresh.")
+                if case SubscriptionError.signIn = error {} else if let previous = self.states[provider] {
+                    state.usage = previous.usage
+                    state.resetInventory = previous.resetInventory
+                    state.resetUpdatedAt = previous.resetUpdatedAt
+                }
+                self.states[provider] = state
                 if case SubscriptionError.rateLimited(let date) = error { self.retryAfter[provider] = date }
             }
         }

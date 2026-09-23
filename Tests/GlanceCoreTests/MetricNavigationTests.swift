@@ -321,6 +321,41 @@ final class MetricNavigationTests: XCTestCase {
         model.claudeMenuLimit = .fiveHour
         XCTAssertEqual(AppModel(defaults: defaults, subscriptions: store).claudeMenuLimit, .fiveHour)
     }
+    func testClaudeSummaryShowsPaceAndKeepsReadingThroughOutage() throws {
+        _ = NSApplication.shared
+        let suite = "Glance.ClaudePace.\(UUID())"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(["claude"], forKey: "subscriptionProviders")
+        defaults.set(["claude"], forKey: "selectedMetrics")
+        var offline = false
+        let store = SubscriptionStore(defaults: defaults, startPolling: false, fetch: { _, _ in
+            if offline { throw URLError(.notConnectedToInternet) }
+            // 60% used two hours into five runs out early; 20% used two days into seven lasts.
+            return SubscriptionUsage(plan: "Max", windows: [
+                UsageWindow(id: "five_hour", title: "5-hour", usedPercent: 60, resetsAt: .now.addingTimeInterval(10_800), durationSeconds: 18_000),
+                UsageWindow(id: "seven_day", title: "Weekly", usedPercent: 20, resetsAt: .now.addingTimeInterval(432_000), durationSeconds: 604_800)
+            ], accountID: "fixture")
+        })
+        let model = AppModel(defaults: defaults, subscriptions: store)
+        model.appearance = .dark
+        let delegate = AppDelegate()
+        delegate.configureMenuBar(model: model)
+        defer { model.panelVisible = false; delegate.popover.close(); delegate.notch?.panel.orderOut(nil); NSStatusBar.system.removeStatusItem(delegate.statusItem) }
+        store.refreshAll(); settle()
+        let button = try XCTUnwrap(delegate.statusItem.button?.subviews.compactMap { $0 as? NSButton }.first)
+        button.performClick(nil); settle()
+        let view = try XCTUnwrap(delegate.popover.contentViewController?.view)
+        let summary = try renderedText(view, name: "claude-pace-summary")
+        XCTAssertTrue(summary.contains("At this pace, runs out in 1h"), summary)
+        XCTAssertTrue(summary.contains("On pace to last until reset"), summary)
+        offline = true
+        store.refresh(.claude); settle()
+        let outage = try renderedText(view, name: "claude-pace-offline")
+        XCTAssertTrue(outage.contains("40%"), outage)
+        XCTAssertTrue(outage.contains("Check your connection"), outage)
+        XCTAssertEqual(model.value(for: "claude"), "40%")
+    }
     func testDashboardAppearanceMatchesAcrossModesAndNavigation() throws {
         _ = NSApplication.shared
         let suite = "Glance.Appearance.\(UUID())"

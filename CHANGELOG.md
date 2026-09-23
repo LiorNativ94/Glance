@@ -3,6 +3,12 @@
 Each release needs 2–4 short bullets describing user-visible changes under its exact version tag.
 Update the same entry when rebuilding an existing tag.
 
+## Unreleased
+
+- Added a Claude **Sessions** tab listing open Claude Code sessions by project, with live Running, Needs input, and Ready states.
+- Added Claude session alerts for finished turns and questions; desktop sessions open directly from a row or notification.
+- Added a Lowest / 5-hour / Weekly picker in Customize for the Claude percentage shown in the menu bar or notch.
+
 ## v1.2.5
 
 - Added Codex session observability grouped by project, with direct links to each task.

@@ -68,6 +68,13 @@ public struct SubscriptionUsage: Equatable, Sendable {
         return generalWindows.min { $0.remainingFraction < $1.remainingFraction }
     }
 
+    /// The named window under the same freshness rules as `limitingWindow`; nil picks the limiting window.
+    public func window(_ id: String?, now: Date = .now) -> UsageWindow? {
+        guard let limiting = limitingWindow(now: now) else { return nil }
+        guard let id else { return limiting }
+        return windows.first { $0.id == id }
+    }
+
     /// Only numeric limits reported by the provider become meters; missing limits are never zero usage.
     public static func parse(_ data: Data, provider: SubscriptionProvider, plan: String? = nil,
                              now: Date = .now, accountID: String? = nil, email: String? = nil) throws -> SubscriptionUsage {

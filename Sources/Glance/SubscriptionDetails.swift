@@ -7,7 +7,7 @@ struct SubscriptionDetails: View {
     @ObservedObject var store: SubscriptionStore
     @ObservedObject var history: QuotaHistoryStore
     @ObservedObject var activity: LocalActivityStore
-    @ObservedObject var sessions: CodexSessionStore
+    @ObservedObject var sessions: AgentSessionStore
     let provider: SubscriptionProvider
     @State private var tab = "Summary"
     @State private var days = 7
@@ -28,7 +28,7 @@ struct SubscriptionDetails: View {
     }
     private var report: LocalActivityReport? { activity.reports[provider] }
     private var tint: Color { .accentColor }
-    private var tabs: [String] { provider == .codex ? ["Summary", "Sessions", "Activity", "History"] : ["Summary", "Activity", "History"] }
+    private let tabs = ["Summary", "Sessions", "Activity", "History"]
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { _ in content }
@@ -81,7 +81,7 @@ struct SubscriptionDetails: View {
         .disclosureGroupStyle(FullRowDisclosureStyle())
         .onAppear {
             tab = tabs.contains(model.providerTabs[provider] ?? "") ? model.providerTabs[provider]! : "Summary"
-            if provider == .codex { sessions.refresh() }
+            sessions.refresh()
         }
         .onChange(of: tab) { _, value in model.providerTabs[provider] = value }
         .onChange(of: usage?.accountID) { _, _ in selectedWindow = ""; selectedPeriod = nil }
@@ -183,7 +183,7 @@ struct SubscriptionDetails: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("\(sessions.activeCount) active agent\(sessions.activeCount == 1 ? "" : "s")")
                         .font(.system(size: 22, weight: .semibold)).monospacedDigit()
-                    Text("Local Codex tasks from the last 24 hours")
+                    Text(provider == .claude ? "Open Claude Code sessions on this Mac" : "Local Codex tasks from the last 24 hours")
                         .font(.system(size: 11)).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -194,7 +194,8 @@ struct SubscriptionDetails: View {
             }
             if let error = sessions.snapshot.error { note(error, warning: true) }
             if sessions.sessions.isEmpty && sessions.snapshot.error == nil {
-                note("No recent Codex tasks found. New tasks appear here automatically while Glance is running.")
+                note(provider == .claude ? "No open Claude Code sessions. Sessions appear here while they are open in Claude or a terminal."
+                     : "No recent Codex tasks found. New tasks appear here automatically while Glance is running.")
             }
             ForEach(groupedSessions, id: \.project) { group in
                 VStack(alignment: .leading, spacing: 0) {
@@ -206,13 +207,14 @@ struct SubscriptionDetails: View {
                     ForEach(group.sessions) { session in sessionRow(session) }
                 }
             }
-            note("Glance stores lifecycle metadata only; prompts and responses are not retained. Click a task to open it in Codex.")
+            note(provider == .claude ? "Glance reads session status only; prompts and responses are not read. Click a session to open it in Claude."
+                 : "Glance stores lifecycle metadata only; prompts and responses are not retained. Click a task to open it in Codex.")
         }
     }
-    private var groupedSessions: [(project: String, sessions: [CodexSession])] {
+    private var groupedSessions: [(project: String, sessions: [AgentSession])] {
         Self.groupedSessions(sessions.sessions)
     }
-    static func groupedSessions(_ sessions: [CodexSession]) -> [(project: String, sessions: [CodexSession])] {
+    static func groupedSessions(_ sessions: [AgentSession]) -> [(project: String, sessions: [AgentSession])] {
         Dictionary(grouping: sessions, by: \.project).map { project, values in
             (project, values.sorted {
                 $0.updatedAt == $1.updatedAt
@@ -225,7 +227,7 @@ struct SubscriptionDetails: View {
             return left == right ? $0.project.localizedCaseInsensitiveCompare($1.project) == .orderedAscending : left > right
         }
     }
-    private func sessionRow(_ session: CodexSession) -> some View {
+    private func sessionRow(_ session: AgentSession) -> some View {
         VStack(spacing: 0) {
             Button {
                 if let url = session.deepLink { NSWorkspace.shared.open(url) }
@@ -243,13 +245,16 @@ struct SubscriptionDetails: View {
                         }.font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer(minLength: 6)
-                    Image(systemName: "arrow.up.forward.app").font(.system(size: 10)).foregroundStyle(.secondary)
+                    if session.deepLink != nil {
+                        Image(systemName: "arrow.up.forward.app").font(.system(size: 10)).foregroundStyle(.secondary)
+                    }
                 }.padding(.vertical, 8).contentShape(Rectangle())
-            }.buttonStyle(.plain).accessibilityIdentifier("codex-session-\(session.id)")
+            }.buttonStyle(.plain).allowsHitTesting(session.deepLink != nil)
+                .accessibilityIdentifier("\(provider.rawValue)-session-\(session.id)")
             Divider()
         }
     }
-    private func sessionStatus(_ status: CodexSessionStatus) -> String {
+    private func sessionStatus(_ status: AgentSessionStatus) -> String {
         switch status {
         case .running: return "Running"
         case .needsInput: return "Needs input"
@@ -258,7 +263,7 @@ struct SubscriptionDetails: View {
         case .failed: return "Error"
         }
     }
-    private func sessionIcon(_ status: CodexSessionStatus) -> String {
+    private func sessionIcon(_ status: AgentSessionStatus) -> String {
         switch status {
         case .running: return "circle.fill"
         case .needsInput, .needsApproval: return "exclamationmark.circle.fill"
@@ -266,7 +271,7 @@ struct SubscriptionDetails: View {
         case .failed: return "xmark.circle.fill"
         }
     }
-    private func sessionColor(_ status: CodexSessionStatus) -> Color {
+    private func sessionColor(_ status: AgentSessionStatus) -> Color {
         switch status {
         case .running: return .blue
         case .needsInput, .needsApproval: return .orange
@@ -274,7 +279,7 @@ struct SubscriptionDetails: View {
         case .failed: return .red
         }
     }
-    private func sessionTime(_ session: CodexSession) -> String {
+    private func sessionTime(_ session: AgentSession) -> String {
         if session.status.isActive, let started = session.startedAt {
             let seconds = max(0, Int(Date.now.timeIntervalSince(started)))
             if seconds < 60 { return "\(seconds)s" }

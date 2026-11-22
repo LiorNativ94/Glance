@@ -203,11 +203,9 @@ For example, a provider with 70% session usage and 40% weekly usage displays **3
   API-key-only and Keychain-only Codex sign-ins are not supported by this connection.
 - **Claude:** sign in with Claude Code.
   Glance reads `~/.claude/.credentials.json` or the `Claude Code-credentials` Keychain item.
-  The Keychain item is read with macOS's `/usr/bin/security` tool, which Claude Code itself uses, so its access survives Glance updates and rebuilds.
-  Background refreshes use that tool only after it has answered a **Refresh** without a prompt.
+  The Keychain item is read with macOS's `/usr/bin/security` tool, which Claude Code itself uses, so macOS never asks for your password, even after Glance updates, rebuilds, or Claude Code sign-in renewals.
   A custom `$CLAUDE_CONFIG_DIR` uses only that directory’s credentials file.
   The sign-in needs the `user:profile` scope; MCP-only credentials cannot supply subscription usage.
-  macOS may request Keychain access when connecting or clicking **Refresh** if that tool is not already trusted.
 
 Usage refreshes every five minutes and after wake; **Refresh** requests an update immediately unless the provider has imposed a cooldown.
 Unavailable data displays a message instead of a zero-percent reading.
@@ -312,7 +310,11 @@ From the repository directory:
 open dist/Glance.app
 ```
 
-The build script compiles the app and its sleep helper, bundles the provider logos, generates the app icon, and creates an ad hoc signed application bundle.
+The build script compiles the app and its sleep helper, bundles the provider logos, generates the app icon, and signs the application bundle.
+It signs with your first valid Developer ID Application certificate, or else your first Apple Development certificate.
+Certificate signatures also enable the hardened runtime and a secure timestamp, which notarization requires.
+Without a certificate it signs ad hoc.
+Set `GLANCE_SIGN_IDENTITY` to choose a different identity, or `-` for ad hoc.
 No Apple developer certificate is required for the local build.
 The generated app is not notarized.
 
@@ -356,6 +358,25 @@ To build the same DMG locally with Xcode installed:
 
 The output is `dist/Glance-1.2-universal.dmg` and its `.sha256` checksum file.
 
+### Notarized local DMG
+
+GitHub releases stay ad hoc signed.
+To build a DMG that opens without a Gatekeeper warning, package it on a Mac that has your Developer ID Application certificate.
+Create the certificate once in **Xcode → Settings → Accounts → Manage Certificates → + → Developer ID Application**.
+Then save notarization credentials once in your keychain, using an app-specific password from [account.apple.com](https://account.apple.com):
+
+```sh
+xcrun notarytool store-credentials glance-notary --apple-id YOUR_APPLE_ID --team-id YOUR_TEAM_ID
+```
+
+Build, notarize, and staple the DMG:
+
+```sh
+GLANCE_NOTARY_PROFILE=glance-notary ./package-dmg.sh v1.2.4
+```
+
+The script stops if the app is not signed with a Developer ID Application certificate.
+
 ## Project layout
 
 | Path | Purpose |
@@ -377,8 +398,7 @@ Metric selections and the optional cup indicator are stored in macOS user defaul
 Notch visibility, dashboard layout, alert thresholds, enabled alert rules, and enabled subscription providers are also stored in user defaults.
 Subscription connections are off by default and read local credentials only for enabled providers.
 Access tokens are sent only to the corresponding provider’s fixed HTTPS usage endpoint; redirects are refused.
-Glance stores no copies of credentials or usage readings on disk, and background Keychain reads never prompt.
-The only related preference is whether the `security` tool has answered silently before.
+Glance stores no copies of credentials or usage readings on disk, and Keychain reads never prompt.
 Closed-lid sessions use temporary local heartbeat and status files.
 Administrator authorization is handled by macOS; the app does not store an administrator password.
 

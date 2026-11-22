@@ -1,8 +1,6 @@
 import Combine
 import Foundation
 import GlanceCore
-import Security
-import LocalAuthentication
 
 struct SubscriptionCredentials {
     let accessToken: String
@@ -43,39 +41,14 @@ struct SubscriptionCredentials {
             }
         }
         guard provider == .claude, customHome == nil else { throw SubscriptionError.signIn(provider) }
-        // Claude Code reads and writes this item with /usr/bin/security, so that tool stays trusted while
-        // Glance's own grant breaks whenever a rebuild changes its signature. Background reads use the tool
-        // only after a click proved it answers without a prompt, because it ignores no-UI flags.
-        let defaults = UserDefaults.standard
-        if allowInteraction || defaults.bool(forKey: securityToolTrustedKey) {
-            let started = Date()
-            if let data = readWithSecurityTool(timeout: allowInteraction ? 60 : 2) {
-                if Date().timeIntervalSince(started) < 2 { defaults.set(true, forKey: securityToolTrustedKey) }
-                return try parse(data, provider: provider)
-            }
-            if !allowInteraction { defaults.set(false, forKey: securityToolTrustedKey) }
-        }
-        // Interactive reads only follow a connect/refresh click. Background polling never prompts.
-        let context = LAContext()
-        context.interactionNotAllowed = !allowInteraction
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "Claude Code-credentials",
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-            kSecUseAuthenticationContext as String: context
-        ]
-        var result: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound { throw SubscriptionError.signIn(provider) }
-        guard status == errSecSuccess, let data = result as? Data else { throw SubscriptionError.keychain }
-        return try parse(data, provider: provider)
+        // Claude Code rewrites this item with /usr/bin/security on every token refresh, which resets its access
+        // list to that tool alone. Reading through the same tool never prompts; reading directly would ask for
+        // the login password again after each refresh, however Glance is signed.
+        return try parse(readWithSecurityTool(timeout: allowInteraction ? 60 : 2), provider: provider)
     }
 
-    static let securityToolTrustedKey = "claudeSecurityToolTrusted"
-
-    /// Output of `security find-generic-password -w`, or nil on failure or timeout.
-    static func readWithSecurityTool(timeout: TimeInterval) -> Data? {
+    /// Output of `security find-generic-password -w`; a missing item means Claude Code is signed out.
+    static func readWithSecurityTool(timeout: TimeInterval) throws -> Data {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
         process.arguments = ["find-generic-password", "-s", "Claude Code-credentials", "-w"]
@@ -85,7 +58,7 @@ struct SubscriptionCredentials {
         process.standardInput = FileHandle.nullDevice
         let exited = DispatchSemaphore(value: 0)
         process.terminationHandler = { _ in exited.signal() }
-        do { try process.run() } catch { return nil }
+        do { try process.run() } catch { throw SubscriptionError.keychain }
         // Drain concurrently so a large item cannot fill the pipe and stall the tool.
         var data = Data()
         let drained = DispatchSemaphore(value: 0)
@@ -98,7 +71,9 @@ struct SubscriptionCredentials {
             exited.wait()
         }
         drained.wait()
-        guard process.terminationReason == .exit, process.terminationStatus == 0 else { return nil }
+        guard process.terminationReason == .exit else { throw SubscriptionError.keychain }
+        if process.terminationStatus == 44 { throw SubscriptionError.signIn(.claude) } // errSecItemNotFound
+        guard process.terminationStatus == 0 else { throw SubscriptionError.keychain }
         return trimmingNewlines(data)
     }
 

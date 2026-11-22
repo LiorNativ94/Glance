@@ -293,7 +293,7 @@ public enum SubscriptionError: Error, LocalizedError {
         case .signIn(let provider): return provider.signInHelp
         case .expired(let provider):
             return "Your \(provider.name) sign-in has expired. It renews the next time you use \(provider == .claude ? "Claude Code" : "Codex"); Glance then updates on its own."
-        case .keychain: return "Allow Keychain access by clicking Refresh to use your existing sign-in."
+        case .keychain: return "Could not read your Claude Code sign-in from the Keychain. Try Refresh."
         case .invalidResponse: return "The provider did not return a supported usage reading."
         case .rateLimited: return "Too many requests. Glance will retry after the provider’s cooldown."
         case .server(let status): return "Usage is unavailable (HTTP \(status)). Try again later."

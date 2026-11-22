@@ -66,7 +66,7 @@ struct SubscriptionCards: View {
                         Text(provider.signInHelp).font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                     Text(provider == .claude
-                         ? "Uses your Claude Code sign-in. macOS may ask for Keychain access."
+                         ? "Uses your Claude Code sign-in."
                          : "Uses your Codex CLI sign-in. API keys don’t include subscription limits.")
                         .font(.system(size: 10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }.padding(12).frame(maxWidth: .infinity, alignment: .leading)
